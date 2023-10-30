@@ -1,0 +1,10 @@
+**/*.o
+**/*.hi
+src/grammar
+build
+**/*.class
+.vscode
+buildGrammar
+buildLLVM
+venv
+**/*.tgz
