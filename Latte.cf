@@ -1,151 +1,114 @@
 token UIdent (letter (letter | digit | '_')*) ;
 
 -- programs ------------------------------------------------
-
 entrypoints Program ;
 
-ProgramDef.   Program ::= [TopDef] ;
+ProgramT.   	Program 	::= [TopDef] ;
 
-FnDef.	   TopDef ::= Type UIdent "(" [Arg] ")" Block ;
+TopClassDefT. 	TopDef 		::= ClassDef;
+TopFuncDefT.    	TopDef 		::= FuncDef;
 
-ClassDef.   TopDef ::= "class" UIdent "{" [ClassAtr] [ClassFun] "}" ;
+FunDefT.	FuncDef         ::= Type UIdent "(" [Arg] ")" Block ;
+ArgT. 	   	Arg 		    ::= Type UIdent ;
 
-separator UIdent ",";
-separator ClassAtr "";
-separator ClassFun "";
+ClassFieldT.     ClassMember     ::= Type UIdent ";";
+ClassMethodT.    ClassMember     ::= FuncDef;
 
-ClassAtrT. ClassAtr ::= Type [UIdent] ";";
-ClassFunT. ClassFun ::= Type UIdent "(" [Arg] ")" Block ;
+ClassDefT.       ClassDef 	::= "class" UIdent "{" [ClassMember] "}" ;
+ClassExtDefT.    ClassDef 	::= "class" UIdent "extends" UIdent "{" [ClassMember] "}" ;
 
+separator Arg "," ;
 separator nonempty TopDef "" ;
+separator ClassMember "" ;
 
-ArgT. 	   Arg ::= Type UIdent;
+------------------------------------------
 
-separator  Arg "," ;
+BlockT.     Block 	::= "{" [Stmt] "}" ;
 
--- statements ----------------------------------------------
+EmptyT.     Stmt 	::= ";" ;
 
-BlockT.     Block ::= "{" [Stmt] "}" ;
+BStmtT.     Stmt 	::= Block ;
+DeclT.      Stmt 	::= Type [Item] ";" ;
+
+NoInitT.    Item 	::= UIdent ;
+InitT.      Item 	::= UIdent "=" Expr ;
+
+AssT.       Stmt 	::= Expr "=" Expr  ";" ;
+IncrT.      Stmt 	::= Expr "++"  ";" ;
+DecrT.      Stmt 	::= Expr "--"  ";" ;
+
+RetT.       Stmt 	::= "return" Expr ";" ;
+VRetT.      Stmt 	::= "return" ";" ;
+
+CondT.      Stmt 	::= "if" "(" Expr ")" Stmt  ;
+CondElseT.  Stmt 	::= "if" "(" Expr ")" Stmt "else" Stmt  ;
+
+WhileT.     Stmt 	::= "while" "(" Expr ")" Stmt ;
+ForT.       Stmt 	::= "for" "(" Type UIdent ":" Expr ")" Stmt ;
+
+SExpT.      Stmt 	::= Expr  ";" ;
 
 separator  Stmt "" ;
-
-Empty.     Stmt ::= ";" ;
-
-BStmt.     Stmt ::= Block ;
-
-Decl.      Stmt ::= Type [Item] ";" ;
-
-NoInit.    Item ::= UIdent ; 
-
-Init.      Item ::= UIdent "=" Expr ;
-
 separator nonempty Item "," ;
-
-Ass.       Stmt ::= Expr "=" Expr  ";" ;
-
-Incr.      Stmt ::= UIdent "++"  ";" ;
-
-Decr.      Stmt ::= UIdent "--"  ";" ;
-
-Ret.       Stmt ::= "return" Expr ";" ;
-
-VRet.      Stmt ::= "return" ";" ;
-
-Cond.      Stmt ::= "if" "(" Expr ")" Stmt  ;
-
-CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
-
-While.     Stmt ::= "while" "(" Expr ")" Stmt ;
-
-SExp.      Stmt ::= Expr  ";" ;
+--separator nonempty UIdent "," ;
 
 -- Types ---------------------------------------------------
 
-Int.       Type ::= "int" ;
+TClass.          Type    ::= UIdent ;
+TInt.            Type 	 ::= "int" ;
+TStr.            Type 	 ::= "string" ;
+TBool.           Type 	 ::= "boolean" ;
+TVoid.           Type    ::= "void" ;
 
-Str.       Type ::= "string" ;
-
-Bool.      Type ::= "boolean" ;
-
-Void.      Type ::= "void" ;
-
-UIdentT.      Type ::= UIdent ;
-
-internal   Fun. Type ::= Type "(" [Type] ")" ;
-
-separator  Type "," ;
+--separator Type "," ;
 
 -- Expressions ---------------------------------------------
 
-ENull.      Expr6 ::= "null";
+ENewObject.	Expr6 	::= "new" Type ;
 
-ECast.      Expr6 ::= "(" UIdent ")" Expr6;
+EMember.	 Expr6 	::= Expr6 "." UIdent ;
+EMemberCall. Expr6 	::= Expr6 "." UIdent "(" [Expr] ")"  ;
 
-EObjectAttr. Expr6 ::= Expr6 "." UIdent ;
+EVar. 		Expr6 	::= UIdent ;
+ELitInt. 	Expr6   ::= Integer ;
+ELitTrue. 	Expr6   ::= "true" ;
+ELitFalse. 	Expr6   ::= "false" ;
+EString. 	Expr6   ::= String ;
 
-EObjectFun. Expr6 ::= Expr6 "." UIdent "(" [Expr] ")" ;
+EApp. 		Expr6   ::= UIdent "(" [Expr] ")" ;
 
-EObjectInit. Expr6 ::= "new" UIdent ;
+ECastNull. 		Expr5   ::= "(" UIdent ")" "null";
 
-EVar.      Expr6 ::= UIdent ;
+Neg. 		Expr5   ::= "-" Expr6 ;
+Not. 		Expr5   ::= "!" Expr6 ;
 
-ELitInt.   Expr6 ::= Integer ;
-
-ELitTrue.  Expr6 ::= "true" ;
-
-ELitFalse. Expr6 ::= "false" ;
-
-EApp.      Expr6 ::= UIdent "(" [Expr] ")" ;
-
-
-EString.   Expr6 ::= String ;
-
-Neg.       Expr5 ::= "-" Expr6 ;
-
-Not.       Expr5 ::= "!" Expr6 ;
-
-EMul.      Expr4 ::= Expr4 MulOp Expr5 ;
-
-EAdd.      Expr3 ::= Expr3 AddOp Expr4 ;
-
-ERel.      Expr2 ::= Expr2 RelOp Expr3 ;
+EMul.           Expr4   ::= Expr4 MulOp Expr5 ;
+EAdd.           Expr3   ::= Expr3 AddOp Expr4 ;
+ERel.           Expr2   ::= Expr2 RelOp Expr3 ;
 
 EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
-
 EOr.       Expr ::= Expr1 "||" Expr ;
 
-coercions  Expr 6 ;
-
-separator  Expr "," ;
+coercions Expr 6 ;
+separator Expr "," ;
 
 -- operators -----------------------------------------------
 
-Plus.      AddOp ::= "+" ;
+Plus.   AddOp   ::= "+" ;
+Minus.  AddOp   ::= "-" ;
+Times.  MulOp   ::= "*" ;
+Div.    MulOp   ::= "/" ;
+Mod.    MulOp   ::= "%" ;
 
-Minus.     AddOp ::= "-" ;
-
-Times.     MulOp ::= "*" ;
-
-Div.       MulOp ::= "/" ;
-
-Mod.       MulOp ::= "%" ;
-
-LTH.       RelOp ::= "<" ;
-
-LE.        RelOp ::= "<=" ;
-
-GTH.       RelOp ::= ">" ;
-
-GE.        RelOp ::= ">=" ;
-
-EQU.       RelOp ::= "==" ;
-
-NE.        RelOp ::= "!=" ;
+LTH.	RelOp   ::= "<" ;
+LE.	    RelOp   ::= "<=" ;
+GTH.	RelOp   ::= ">" ;
+GE.	    RelOp   ::= ">=" ;
+EQU.	RelOp   ::= "==" ;
+NE.	    RelOp   ::= "!=" ;
 
 -- comments ------------------------------------------------
 
-comment    "#" ;
-
-comment    "//" ;
-
-comment    "/*" "*/" ;
+comment "#" ;
+comment "//" ;
+comment "/*" "*/" ;
