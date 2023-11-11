@@ -6,4 +6,5 @@ build
 buildGrammar
 buildCompiler
 venv
+latc
 **/*.tgz
