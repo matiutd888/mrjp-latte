@@ -16,6 +16,9 @@ src/grammar/AbsLatte.hs: Latte.cf
 	cp buildGrammar/*.hs src/grammar/
 	rm -rf src/grammar/TestLatte.hs
 
+lib/runtime.bc: lib-sources/runtime.ll
+	llvm-asm lib-sources/runtime.ll -o lib/runtime.bc	
+
 latc: src/*.hs grammar
 		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/grammar/ -isrc/ -outputdir buildCompiler -o latc src/Main.hs
 
