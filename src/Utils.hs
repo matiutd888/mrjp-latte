@@ -12,7 +12,8 @@ writeStringToFile filePath content = do
     hPutStr handle content
 
 validateFilePath :: FilePath -> IO ()
-validateFilePath f = if takeExtension f == ".input" then return () else hPutStrLn stderr "Unexpected extension of the input file; it should be .input" >> exitFailure
+-- validateFilePath f = if takeExtension f == ".input" then return () else hPutStrLn stderr "Unexpected extension of the input file; it should be .input" >> exitFailure
+validateFilePath f = return ()
 
 composeReaders :: (MonadReader b m) => b -> [m b] -> m b
 composeReaders b [] = return b

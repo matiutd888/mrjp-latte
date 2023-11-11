@@ -4,7 +4,6 @@
 module Main where
 
 import AbsLatte (Program)
-import CompilerLLVM
 import Control.Monad
 import Control.Monad.Except
 import LexLatte (Token, mkPosToken)
@@ -59,6 +58,7 @@ runFile v p f = do
   programStr <- readFile f
   -- let outputLLFilePath = getOutputLLFileFromInputFilePath f
   llvmProgramStr <- run v p programStr
+  return ()
 
 -- writeStringToFile outputLLFilePath llvmProgramStr
 -- createLLVMBitcode outputLLFilePath
@@ -91,15 +91,16 @@ run v p s =
     ts = myLexer s
     showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
     getLLFileContent prog = do
-      semAnalysisResult <- SA.semanticAnalysis prog
-      case semAnalysisResult of
-        Left m -> hPutStrLn stderr m >> exitFailure
-        Right _ -> do
-          -- llFileContent <- runExceptT $ getLLFile prog
-          -- case llFileContent of
-          --   Left m -> hPutStrLn stderr m >> exitFailure
-          --   Right m -> putStrLn m >> return m
-          return "backend not implemented yet"
+      -- semAnalysisResult <- SA.semanticAnalysis prog
+      -- case semAnalysisResult of
+      --   Left m -> hPutStrLn stderr m >> exitFailure
+      --   Right _ -> do
+
+      -- llFileContent <- runExceptT $ getLLFile prog
+      -- case llFileContent of
+      --   Left m -> hPutStrLn stderr m >> exitFailure
+      --   Right m -> putStrLn m >> return m
+      return "backend not implemented yet"
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do

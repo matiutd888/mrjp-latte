@@ -17,7 +17,7 @@ src/grammar/AbsLatte.hs: Latte.cf
 	rm -rf src/grammar/TestLatte.hs
 
 latc: src/*.hs grammar
-	ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/grammar/ -isrc/ -outputdir buildCompiler -o latc src/Main.hs
+		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/grammar/ -isrc/ -outputdir buildCompiler -o latc src/Main.hs
 
 clean:
 	rm -rf buildCompiler latc
