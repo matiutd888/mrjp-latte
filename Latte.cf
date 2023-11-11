@@ -50,7 +50,6 @@ SExpT.      Stmt 	::= Expr  ";" ;
 
 separator  Stmt "" ;
 separator nonempty Item "," ;
---separator nonempty UIdent "," ;
 
 -- Types ---------------------------------------------------
 
@@ -59,8 +58,9 @@ TInt.            Type 	 ::= "int" ;
 TStr.            Type 	 ::= "string" ;
 TBool.           Type 	 ::= "boolean" ;
 TVoid.           Type    ::= "void" ;
+internal   TFun. Type ::= Type "(" [Type] ")" ;
 
---separator Type "," ;
+separator Type "," ;
 
 -- Expressions ---------------------------------------------
 
