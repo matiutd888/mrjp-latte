@@ -95,12 +95,11 @@ run v p s =
       case semAnalysisResult of
         Left m -> hPutStrLn stderr m >> exitFailure
         Right _ -> do
+          -- llFileContent <- runExceptT $ getLLFile prog
+          -- case llFileContent of
+          --   Left m -> hPutStrLn stderr m >> exitFailure
+          --   Right m -> putStrLn m >> return m
           return "backend not implemented yet"
-
--- llFileContent <- runExceptT $ getLLFile prog
--- case llFileContent of
---   Left m -> hPutStrLn stderr m >> exitFailure
---   Right m -> putStrLn m >> return m
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do
