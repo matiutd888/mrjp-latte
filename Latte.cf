@@ -1,4 +1,4 @@
-token UIdent (upper (letter | digit | '_')*) ;
+token UIdent (letter (letter | digit | '_')*) ;
 
 -- programs ------------------------------------------------
 
@@ -8,7 +8,7 @@ ProgramDef.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
-ClassDef.   TopDef ::= "class" Ident "{" [ClassAtr] [ClassFun] "}" ;
+ClassDef.   TopDef ::= "class" UIdent "{" [ClassAtr] [ClassFun] "}" ;
 
 separator Ident ",";
 separator ClassAtr "";
@@ -82,6 +82,8 @@ ENull.      Expr6 ::= "null";
 ECast.      Expr6 ::= "(" Ident ")" Expr6;
 
 EObjectAttr. Expr6 ::= Expr6 "." Ident ;
+
+EObjectFun. Expr6 ::= Expr6 "." Ident "(" [Expr] ")" ;
 
 EObjectInit. Expr6 ::= "new" Ident ;
 
