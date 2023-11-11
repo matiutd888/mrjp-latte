@@ -2,9 +2,8 @@
 **/*.hi
 src/grammar
 build
-**/*.class
 .vscode
 buildGrammar
-buildLLVM
+buildCompiler
 venv
 **/*.tgz
