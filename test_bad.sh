@@ -2,7 +2,7 @@
 
 MY_BINARY="latc"
 
-default_bad_files_folder="lattests/bad/"
+default_bad_files_folder="lattests/bad"
 
 # Check if correct number of arguments is provided
 if [ "$#" -eq 0 ]; then
