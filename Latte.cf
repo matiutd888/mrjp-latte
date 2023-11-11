@@ -1,20 +1,31 @@
+token UIdent (upper (letter | digit | '_')*) ;
+
 -- programs ------------------------------------------------
 
 entrypoints Program ;
 
-Program.   Program ::= [TopDef] ;
+ProgramDef.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
+ClassDef.   TopDef ::= "class" Ident "{" [ClassAtr] [ClassFun] "}" ;
+
+separator Ident ",";
+separator ClassAtr "";
+separator ClassFun "";
+
+ClassAtrT. ClassAtr ::=  Type [Ident] ";";
+ClassFunT. ClassFun ::= Type Ident "(" [Arg] ")" Block ;
+
 separator nonempty TopDef "" ;
 
-Arg. 	   Arg ::= Type Ident;
+ArgT. 	   Arg ::= Type Ident;
 
 separator  Arg "," ;
 
 -- statements ----------------------------------------------
 
-Block.     Block ::= "{" [Stmt] "}" ;
+BlockT.     Block ::= "{" [Stmt] "}" ;
 
 separator  Stmt "" ;
 
@@ -30,7 +41,7 @@ Init.      Item ::= Ident "=" Expr ;
 
 separator nonempty Item "," ;
 
-Ass.       Stmt ::= Ident "=" Expr  ";" ;
+Ass.       Stmt ::= Expr "=" Expr  ";" ;
 
 Incr.      Stmt ::= Ident "++"  ";" ;
 
@@ -58,11 +69,21 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
+IdentT.      Type ::= Ident ;
+
 internal   Fun. Type ::= Type "(" [Type] ")" ;
 
 separator  Type "," ;
 
 -- Expressions ---------------------------------------------
+
+ENull.      Expr6 ::= "null";
+
+ECast.      Expr6 ::= "(" Ident ")" Expr6;
+
+EObjectAttr. Expr6 ::= Expr6 "." Ident ;
+
+EObjectInit. Expr6 ::= "new" Ident ;
 
 EVar.      Expr6 ::= Ident ;
 
@@ -73,6 +94,7 @@ ELitTrue.  Expr6 ::= "true" ;
 ELitFalse. Expr6 ::= "false" ;
 
 EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+
 
 EString.   Expr6 ::= String ;
 
