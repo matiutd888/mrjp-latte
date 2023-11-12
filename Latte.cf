@@ -5,8 +5,8 @@ entrypoints Program ;
 
 ProgramT.   	Program 	::= [TopDef] ;
 
-TopClassDefT. 	TopDef 		::= ClassDef;
-TopFuncDefT.    	TopDef 		::= FuncDef;
+TopClassDef. 	TopDef 		::= ClassDef;
+TopFuncDef.    	TopDef 		::= FuncDef;
 
 FunDefT.	FuncDef         ::= Type UIdent "(" [Arg] ")" Block ;
 ArgT. 	   	Arg 		    ::= Type UIdent ;
@@ -23,30 +23,30 @@ separator ClassMember "" ;
 
 ------------------------------------------
 
-BlockT.     Block 	::= "{" [Stmt] "}" ;
+SBlock.     Block 	::= "{" [Stmt] "}" ;
 
-EmptyT.     Stmt 	::= ";" ;
+SEmpty.     Stmt 	::= ";" ;
 
-BStmtT.     Stmt 	::= Block ;
-DeclT.      Stmt 	::= Type [Item] ";" ;
+SBStmt.     Stmt 	::= Block ;
+SDecl.      Stmt 	::= Type [Item] ";" ;
 
-NoInitT.    Item 	::= UIdent ;
-InitT.      Item 	::= UIdent "=" Expr ;
+SNoInit.    Item 	::= UIdent ;
+SInit.      Item 	::= UIdent "=" Expr ;
 
-AssT.       Stmt 	::= Expr "=" Expr  ";" ;
-IncrT.      Stmt 	::= Expr "++"  ";" ;
-DecrT.      Stmt 	::= Expr "--"  ";" ;
+SAss.       Stmt 	::= Expr "=" Expr  ";" ;
+SIncr.      Stmt 	::= Expr "++"  ";" ;
+SDecr.      Stmt 	::= Expr "--"  ";" ;
 
-RetT.       Stmt 	::= "return" Expr ";" ;
-VRetT.      Stmt 	::= "return" ";" ;
+SRet.       Stmt 	::= "return" Expr ";" ;
+SVRet.      Stmt 	::= "return" ";" ;
 
-CondT.      Stmt 	::= "if" "(" Expr ")" Stmt  ;
-CondElseT.  Stmt 	::= "if" "(" Expr ")" Stmt "else" Stmt  ;
+SCond.      Stmt 	::= "if" "(" Expr ")" Stmt  ;
+SCondElse.  Stmt 	::= "if" "(" Expr ")" Stmt "else" Stmt  ;
 
-WhileT.     Stmt 	::= "while" "(" Expr ")" Stmt ;
-ForT.       Stmt 	::= "for" "(" Type UIdent ":" Expr ")" Stmt ;
+SWhile.     Stmt 	::= "while" "(" Expr ")" Stmt ;
+SFor.       Stmt 	::= "for" "(" Type UIdent ":" Expr ")" Stmt ;
 
-SExpT.      Stmt 	::= Expr  ";" ;
+SExp.      Stmt 	::= Expr  ";" ;
 
 separator  Stmt "" ;
 separator nonempty Item "," ;

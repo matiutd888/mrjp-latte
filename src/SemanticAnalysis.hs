@@ -220,7 +220,7 @@ incrementBlockLevel env = env {level = (+ 1) $ level env}
 typeStmt :: A.Stmt -> StmtTEval ()
 typeStmt = undefined
 
--- typeStmt (A.Empty _) = return ()
+-- typeStmt (A.SEmpty _) = return ()
 -- -- ~ typeStmt (BStmt pos (Block' a))
 -- typeStmt (A.Cond _ expr block) = do
 --   checkExpressionType (A.Bool A.BNFC'NoPosition) expr
@@ -413,7 +413,7 @@ typeStmt = undefined
 --   return ()
 
 checkIfMainDef :: A.TopDef -> Bool
-checkIfMainDef (TopFuncDefT _ (A.FunDefT _ retType ident args _)) =
+checkIfMainDef (TopFuncDef _ (A.FunDefT _ retType ident args _)) =
   ident == A.UIdent "main" && isType retType A.TInt && args == []
 checkIfMainDef _ = False
 
@@ -436,23 +436,23 @@ runStmtTEval env e = runIdentity (runExceptT (runStateT e env))
 -- Build in functions
 printString :: A.TopDef
 printString =
-  TopFuncDefT noPos $
+  TopFuncDef noPos $
     FunDefT
       noPos
       (A.TVoid noPos)
       (A.UIdent "printString")
       [A.ArgT noPos (A.TStr noPos) (A.UIdent "x")]
-      (A.BlockT noPos [])
+      (A.SBlock noPos [])
 
 printInt :: A.TopDef
 printInt =
-  TopFuncDefT noPos $
+  TopFuncDef noPos $
     FunDefT
       noPos
       (A.TVoid noPos)
       (A.UIdent "printInt")
       [A.ArgT noPos (A.TInt noPos) (A.UIdent "x")]
-      (A.BlockT noPos [])
+      (A.SBlock noPos [])
 
 -- printInt :: A.TopDef
 -- printInt =
