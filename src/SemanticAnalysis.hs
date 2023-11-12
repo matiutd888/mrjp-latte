@@ -41,6 +41,9 @@ type ExprTEval a = ReaderT Env (ExceptT String Identity) a
 runExprTEval :: Env -> ExprTEval a -> Either String a
 runExprTEval env e = runIdentity (runExceptT (runReaderT e env))
 
+typeOfExpr :: A.Expr -> ExprTEval A.Type
+typeOfExpr = undefined
+
 -- Type contains also information about position of the expression that has the type returned.
 -- typeOfExpr :: A.Expr -> ExprTEval A.Type
 -- typeOfExpr (A.EVar pos ident) = do
@@ -218,15 +221,20 @@ incrementBlockLevel :: Env -> Env
 incrementBlockLevel env = env {level = (+ 1) $ level env}
 
 typeStmt :: A.Stmt -> StmtTEval ()
-typeStmt = undefined
+typeStmt (A.SEmpty _) = return ()
+typeStmt (A.SCond _ expr block) = do
+  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  env <- get
+  typeStmt block
+  put env
+typeStmt (A.SCondElse _ expr b1 b2) = do
+  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  env <- get
+  typeStmt b1
+  put env >> (typeStmt b2)
+  put env
+typeStmt _ = undefined
 
--- typeStmt (A.SEmpty _) = return ()
--- -- ~ typeStmt (BStmt pos (Block' a))
--- typeStmt (A.Cond _ expr block) = do
---   checkExpressionType (A.Bool A.BNFC'NoPosition) expr
---   env <- get
---   typeStmt (A.BStmt (hasPosition block) block)
---   put env
 -- typeStmt (A.CondElse _ expr b1 b2) = do
 --   checkExpressionType (A.Bool A.BNFC'NoPosition) expr
 --   env <- get
@@ -404,13 +412,13 @@ typeStmt = undefined
 --           ++ printTree ident
 --           ++ " was already declared at this level"
 
--- checkExpressionType :: A.Type -> A.Expr -> StmtTEval ()
--- checkExpressionType t expr = do
---   env <- get
---   exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
---   assertM (typesEq exprType t) $
---     errorMessageWrongType (hasPosition expr) exprType t
---   return ()
+checkExpressionType :: A.Type -> A.Expr -> StmtTEval ()
+checkExpressionType t expr = do
+  env <- get
+  exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
+  assertM (typesEq exprType t) $
+    errorMessageWrongType (hasPosition expr) exprType t
+  return ()
 
 checkIfMainDef :: A.TopDef -> Bool
 checkIfMainDef (TopFuncDef _ (A.FunDefT _ retType ident args _)) =
