@@ -13,6 +13,6 @@ showPosition (Just x) = show x ++ ": "
 showPositionOf :: A.HasPosition a => a -> String
 showPositionOf = showPosition . A.hasPosition
 
-undefinedReferenceMessage :: A.Ident -> BNFC'Position -> String
-undefinedReferenceMessage (Ident x) pos =
+undefinedReferenceMessage :: A.UIdent -> BNFC'Position -> String
+undefinedReferenceMessage (UIdent x) pos =
   showPosition pos ++ "undefined reference " ++ show x
