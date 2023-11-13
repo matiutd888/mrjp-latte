@@ -3,14 +3,19 @@
 
 module SemanticAnalysis where
 
+import AbsLatte (BNFC'Position)
 import AbsLatte as A
+import qualified AbsLatte as A
+import Control.Monad.Error (MonadError (throwError))
 import Control.Monad.Except
 import Control.Monad.Identity
+import Control.Monad.RWS (MonadState (get))
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Either as DE
 import qualified Data.Map as M
 import Errors
+import GHC.Base (undefined)
 import PrintLatte
 import Utils
 import Prelude as P
@@ -23,7 +28,6 @@ data Env = Env
   { variables :: M.Map A.UIdent A.Type,
     variableLevels :: M.Map A.UIdent Int,
     functions :: M.Map A.UIdent A.Type,
-    functionLevels :: M.Map A.UIdent Int,
     level :: Int,
     functionType :: Maybe A.Type,
     classes :: M.Map A.UIdent ClassType
@@ -233,47 +237,42 @@ typeStmt (A.SCondElse _ expr b1 b2) = do
   typeStmt b1
   put env >> (typeStmt b2)
   put env
+typeStmt (A.SExp _ expr) = do
+  env <- get
+  liftEither $ runExprTEval env (typeOfExpr expr)
+  return ()
+typeStmt (A.SWhile _ expr stmt) = do
+  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  env <- get
+  typeStmt stmt
+  put env
+typeStmt (A.SDecl _ t items) = do
+  checkTypeCorrectUtil (A.hasPosition t) t
+  mapM_ (addItemToEnv t) items
+  return ()
+  where
+    addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
+    addItemToEnv itemType (A.SNoInit pos ident) = do
+      env <- get
+      checkVariableLevel pos ident
+      put $
+        env
+          { variables = M.insert ident itemType (variables env),
+            variableLevels = M.insert ident (level env) (variableLevels env)
+          }
+      return ()
+    addItemToEnv itemType (A.SInit pos ident expr) = do
+      checkVariableLevel pos ident
+      env <- get
+      put $
+        env
+          { variables = M.insert ident t (variables env),
+            variableLevels = M.insert ident (level env) (variableLevels env)
+          }
+      checkExpressionType itemType expr
+      return ()
 typeStmt _ = undefined
 
--- typeStmt (A.CondElse _ expr b1 b2) = do
---   checkExpressionType (A.Bool A.BNFC'NoPosition) expr
---   env <- get
---   typeStmt $ A.BStmt (hasPosition b1) b1
---   put env >> (typeStmt (A.BStmt (hasPosition b2) b2))
---   put env
--- typeStmt (A.SExp _ expr) = do
---   env <- get
---   liftEither $ runExprTEval env (typeOfExpr expr)
---   return ()
--- typeStmt (A.While _ expr stmt) = do
---   checkExpressionType (A.Bool A.BNFC'NoPosition) expr
---   env <- get
---   typeStmt stmt
---   put env
--- typeStmt (A.DeclStmt _ (A.Decl _ t items)) = do
---   mapM_ (addItemToEnv t) items
---   return ()
---   where
---     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
---     addItemToEnv itemType (A.NoInit pos ident) = do
---       env <- get
---       checkVariableLevel pos ident
---       put $
---         env
---           { variables = M.insert ident itemType (variables env),
---             variableLevels = M.insert ident (level env) (variableLevels env)
---           }
---       return ()
---     addItemToEnv itemType (A.Init pos ident expr) = do
---       checkExpressionType itemType expr
---       checkVariableLevel pos ident
---       env <- get
---       put $
---         env
---           { variables = M.insert ident t (variables env),
---             variableLevels = M.insert ident (level env) (variableLevels env)
---           }
---       return ()
 -- typeStmt (A.DeclStmt _ (A.FDecl pos retType ident params body)) = do
 --   env <- get
 --   checkFunctionLevel pos ident
@@ -386,18 +385,33 @@ typeStmt _ = undefined
 --       }
 
 -- Check if variable ident can be declared at the given level.
--- checkVariableLevel :: BNFC'Position -> Ident -> StmtTEval ()
--- checkVariableLevel pos ident = do
---   env <- get
---   let lvl = level env
---   case M.lookup ident (variableLevels env) of
---     Nothing -> return ()
---     Just varLevel ->
---       assertM (varLevel /= lvl) $
---         showPosition pos
---           ++ "variable "
---           ++ printTree ident
---           ++ " was already declared at this level"
+checkVariableLevel :: BNFC'Position -> A.UIdent -> StmtTEval ()
+checkVariableLevel pos ident = do
+  env <- get
+  let lvl = level env
+  case M.lookup ident (variableLevels env) of
+    Nothing -> return ()
+    Just varLevel ->
+      assertM (varLevel /= lvl) $
+        showPosition pos
+          ++ "variable "
+          ++ printTree ident
+          ++ " was already declared at this level"
+
+-- Checks if type is a correct class, Int, string or bool
+checkTypeCorrectUtil :: BNFC'Position -> A.Type -> StmtTEval ()
+checkTypeCorrectUtil pos (A.TClass _ ident) = do
+  env <- get
+  case M.lookup ident (classes env) of
+    Just _ -> return ()
+    Nothing ->
+      throwError $
+        showPosition pos
+          ++ "cannot find class "
+          ++ printTree ident
+checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot use type 'void' in this place"
+checkTypeCorrectUtil pos (A.TFun _ _ _) = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
+checkTypeCorrectUtil _ _ = return ()
 
 -- checkFunctionLevel :: BNFC'Position -> Ident -> StmtTEval ()
 -- checkFunctionLevel pos ident = do
@@ -494,7 +508,6 @@ initEnv =
       { variables = M.empty,
         variableLevels = M.empty,
         functions = M.empty,
-        functionLevels = M.empty,
         level = 0,
         functionType = Nothing,
         classes = M.empty
