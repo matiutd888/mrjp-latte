@@ -4,8 +4,6 @@
 module SemanticAnalysis where
 
 import Control.Monad (foldM, when)
-import Control.Monad.Error (MonadError (throwError))
-import Control.Monad.Error.Class (liftEither)
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.RWS (MonadState (get))
