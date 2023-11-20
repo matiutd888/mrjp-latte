@@ -6,7 +6,7 @@ module SemanticAnalysis where
 import AbsLatte (BNFC'Position)
 import AbsLatte as A
 import qualified AbsLatte as A
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Control.Monad.Error (MonadError (throwError))
 import Control.Monad.Error.Class (liftEither)
 import Control.Monad.Except
@@ -481,10 +481,7 @@ checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
 addTopDefToEnv :: A.TopDef -> StmtTEval ()
 addTopDefToEnv (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
   env <- get
-  _ <-
-    if (M.member funName (functions env))
-      then throwError $ functionHasAlreadyBeenDeclared pos funName
-      else return ()
+  when (M.member funName (functions env)) $ throwError $ functionHasAlreadyBeenDeclared pos funName
   let newFunctions =
         M.insert
           funName
@@ -494,10 +491,10 @@ addTopDefToEnv (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
 addTopDefToEnv (A.TopClassDef pos classDef) = do
   let className = getClassName classDef
   env <- get
-  _ <-
-    if (M.member className (classes env))
-      then throwError $ classHasAlreadyBeenDeclared pos className
-      else return ()
+  when
+    (M.member className (classes env))
+    $ throwError
+    $ classHasAlreadyBeenDeclared pos className
   classType <- createClassTypeFromClassDef classDef
   let newClasses =
         M.insert
