@@ -229,7 +229,7 @@ typeOfExpr = undefined
 
 checkExpressionIsLValue :: A.Expr -> StmtTEval ()
 checkExpressionIsLValue (A.EVar _ _) = return ()
-checkExpressionIsLValue (A.EMember _ _ _) = return ()
+checkExpressionIsLValue A.EMember {} = return ()
 checkExpressionIsLValue e = throwError $ errorMessageNotAnLValue (A.hasPosition e) e
 
 -- Statement typechecker
@@ -249,7 +249,7 @@ typeStmt (A.SCondElse _ expr b1 b2) = do
   checkExpressionType (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt b1
-  put env >> (typeStmt b2)
+  put env >> typeStmt b2
   put env
 typeStmt (A.SExp _ expr) = do
   env <- get
@@ -263,7 +263,6 @@ typeStmt (A.SWhile _ expr stmt) = do
 typeStmt (A.SDecl _ t items) = do
   checkTypeCorrectUtil (A.hasPosition t) t
   mapM_ (addItemToEnv t) items
-  return ()
   where
     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
     addItemToEnv itemType (A.SNoInit pos ident) = do
@@ -399,7 +398,7 @@ checkTypeCorrectUtil pos (A.TClass _ ident) = do
           ++ "cannot find class "
           ++ printTree ident
 checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot use type 'void' in this place"
-checkTypeCorrectUtil pos (A.TFun _ _ _) = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
+checkTypeCorrectUtil pos A.TFun {} = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
 checkTypeCorrectUtil _ _ = return ()
 
 -- checkFunctionLevel :: BNFC'Position -> Ident -> StmtTEval ()
@@ -434,7 +433,7 @@ checkExpressionType t expr = do
 
 checkIfMainDef :: A.TopDef -> Bool
 checkIfMainDef (TopFuncDef _ (A.FunDefT _ retType ident args _)) =
-  ident == A.UIdent "main" && isType retType A.TInt && args == []
+  ident == A.UIdent "main" && isType retType A.TInt && null args
 checkIfMainDef _ = False
 
 getArgType :: A.Arg -> A.Type
@@ -469,7 +468,7 @@ checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
     checkForCyclesHelpRec previousVisited visited currClass = do
       let currClassT = DM.fromJust $ M.lookup currClass graph
       assertM (S.notMember currClass visited) $ cyclicInheritance $ classPosition currClassT
-      if (S.member currClass previousVisited)
+      if S.member currClass previousVisited
         then return (S.union visited previousVisited)
         else case currClassT of
           (ClassType _ _ (Just baseClass) _) -> do
@@ -604,24 +603,6 @@ printInt =
       (A.UIdent "printInt")
       [A.ArgT noPos (A.TInt noPos) (A.UIdent "x")]
       (A.SBlock noPos [])
-
--- printInt :: A.TopDef
--- printInt =
---   FnDef
---     noPos
---     (A.TVoid noPos)
---     (A.UIdent "printInt")
---     [A.Arg noPos (A.ArgT noPos (A.Int noPos)) (A.UIdent "x")]
---     (A.Block noPos [])
-
--- -- assert :: A.TopDef
--- -- assert =
--- --   FnDef
--- --     noPos
--- --     (A.Void noPos)
--- --     (A.UIdent "assert")
--- --     [A.Arg noPos (A.ArgT noPos (A.Bool noPos)) (A.UIdent "x")]
--- --     (A.Block noPos [])
 
 addFunctions :: Env -> Env
 addFunctions e = snd $ DE.fromRight ((), initEnv) $ runStmtTEval e x
