@@ -43,7 +43,7 @@ data ClassType = ClassType
   { cAttrs :: M.Map A.UIdent A.Type,
     cFuncs :: M.Map A.UIdent A.Type,
     baseClass :: Maybe A.UIdent,
-    classPosition :: BNFC'Position
+    classPosition :: A.BNFC'Position
   }
   deriving (Show)
 
@@ -121,7 +121,7 @@ typeOfExpr = undefined
 --   liftEither $
 --     runStmtTEval blockEnv $
 --       typeStmt $
---         A.BStmt (hasPosition body) body
+--         A.BStmt (A.hasPosition body) body
 --   return $ Function pos retType $ getArgType <$> arguments
 -- typeOfExpr (A.EApp pos callee args) =
 --   case callee of
@@ -149,7 +149,7 @@ typeOfExpr = undefined
 -- ~ showPosition pos ++ "no function " ++ printTree ident ++ " found")
 
 -- Checks if function application is performed correctly. If so, returns its return type.
--- handleFunction :: BNFC'Position -> A.Type -> [A.Expr] -> ExprTEval A.Type
+-- handleFunction :: A.BNFC'Position -> A.Type -> [A.Expr] -> ExprTEval A.Type
 -- handleFunction pos f args =
 --   case f of
 --     A.Function _ retType params ->
@@ -186,14 +186,14 @@ typeOfExpr = undefined
 --             let paramType = (getTypeFromArgType param)
 --             assertM
 --               (typesEq varType paramType)
---               (errorMessageWrongType (hasPosition arg) varType paramType)
+--               (errorMessageWrongType (A.hasPosition arg) varType paramType)
 --         _ -> throwError $ errorWrongArgumentPassedByReference arg param
 --     _ -> do
 --       argType <- typeOfExpr arg
 --       let paramType = (getTypeFromArgType param)
 --       assertM
 --         (typesEq argType paramType)
---         (errorMessageWrongType (hasPosition arg) argType paramType)
+--         (errorMessageWrongType (A.hasPosition arg) argType paramType)
 
 -- getArgType :: A.Arg -> A.ArgType
 -- getArgType (A.Arg _ t _) = t
@@ -210,14 +210,14 @@ typeOfExpr = undefined
 --   A.Expr ->
 --   ExprTEval A.Type
 -- typeOfBinOp typeConstructor retTypeConstructor pos e1 e2 = do
---   typeOfExpr e1 >>= checkForType typeConstructor (hasPosition e1)
---   typeOfExpr e2 >>= checkForType typeConstructor (hasPosition e2)
+--   typeOfExpr e1 >>= checkForType typeConstructor (A.hasPosition e1)
+--   typeOfExpr e2 >>= checkForType typeConstructor (A.hasPosition e2)
 --   return $ retTypeConstructor pos
 
 -- checkForType ::
 --   MonadError String m =>
 --   (BNFC'Position -> A.Type) ->
---   BNFC'Position ->
+--   A.BNFC'Position ->
 --   A.Type ->
 --   m ()
 -- checkForType typeConstructor pos t =
@@ -371,7 +371,7 @@ typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
 --   return ()
 
 -- Check if variable ident can be declared at the given level.
-checkVariableLevel :: BNFC'Position -> A.UIdent -> StmtTEval ()
+checkVariableLevel :: A.BNFC'Position -> A.UIdent -> StmtTEval ()
 checkVariableLevel pos ident = do
   env <- get
   let lvl = level env
@@ -385,7 +385,7 @@ checkVariableLevel pos ident = do
           ++ " was already declared at this level"
 
 -- Checks if type is a correct class, Int, string or bool
-checkTypeCorrectUtil :: BNFC'Position -> A.Type -> StmtTEval ()
+checkTypeCorrectUtil :: A.BNFC'Position -> A.Type -> StmtTEval ()
 checkTypeCorrectUtil pos (A.TClass _ ident) = do
   env <- get
   case M.lookup ident (classes env) of
@@ -399,7 +399,7 @@ checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot 
 checkTypeCorrectUtil pos A.TFun {} = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
 checkTypeCorrectUtil _ _ = return ()
 
--- checkFunctionLevel :: BNFC'Position -> Ident -> StmtTEval ()
+-- checkFunctionLevel :: A.BNFC'Position -> Ident -> StmtTEval ()
 -- checkFunctionLevel pos ident = do
 --   env <- get
 --   let lvl = level env
@@ -418,7 +418,7 @@ checkExpressionsEqualType e1 e2 = do
   expr1Type <- liftEither $ runExprTEval env (typeOfExpr e1)
   expr2Type <- liftEither $ runExprTEval env (typeOfExpr e2)
   assertM (typesEq expr2Type expr1Type) $
-    errorMessageWrongType (hasPosition e1) expr2Type expr1Type
+    errorMessageWrongType (A.hasPosition e1) expr2Type expr1Type
   return ()
 
 checkExpressionType :: A.Type -> A.Expr -> StmtTEval ()
@@ -426,18 +426,18 @@ checkExpressionType t expr = do
   env <- get
   exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
   assertM (typesEq exprType t) $
-    errorMessageWrongType (hasPosition expr) exprType t
+    errorMessageWrongType (A.hasPosition expr) exprType t
   return ()
 
 checkIfMainDef :: A.TopDef -> Bool
-checkIfMainDef (TopFuncDef _ (A.FunDefT _ retType ident args _)) =
+checkIfMainDef (A.TopFuncDef _ (A.FunDefT _ retType ident args _)) =
   ident == A.UIdent "main" && isType retType A.TInt && null args
 checkIfMainDef _ = False
 
 getArgType :: A.Arg -> A.Type
 getArgType (A.ArgT _ t _) = t
 
-addArgToEnv :: MonadError String m => Int -> Env -> Arg -> m Env
+addArgToEnv :: MonadError String m => Int -> Env -> A.Arg -> m Env
 addArgToEnv newLevel env (A.ArgT pos t ident) = do
   -- TODO add here a warning if we shadow a variable / class variable
   liftEither $ runStmtTEval env $ checkVariableLevel pos ident
@@ -511,7 +511,7 @@ typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
         functionRetType = retType,
         level = incrementedLevel
       }
-  typeStmt $ A.SBStmt (hasPosition block) block
+  typeStmt $ A.SBStmt (A.hasPosition block) block
   put env
 -- TODO this is the next thing to do!
 typeTopDef (A.TopClassDef pos classDef) = undefined
@@ -542,7 +542,7 @@ createClassTypeFromClassDef :: A.ClassDef -> StmtTEval ClassType
 createClassTypeFromClassDef (A.ClassDefT pos className classMembers) = createClassTypeFromClassMembers pos DM.Nothing classMembers
 createClassTypeFromClassDef (A.ClassExtDefT pos className baseClassName classMembers) = createClassTypeFromClassMembers pos (DM.Just baseClassName) classMembers
 
-createClassTypeFromClassMembers :: BNFC'Position -> Maybe A.UIdent -> [A.ClassMember] -> StmtTEval ClassType
+createClassTypeFromClassMembers :: A.BNFC'Position -> Maybe A.UIdent -> [A.ClassMember] -> StmtTEval ClassType
 createClassTypeFromClassMembers pos bClass classMembers = do
   let acc =
         ClassType
@@ -564,7 +564,7 @@ createClassTypeFromClassMembers pos bClass classMembers = do
             accClassType
               { cAttrs = newCAttrs
               }
-    createClassTypeFromClassMembersHelp accClassType (A.ClassMethodT pos (FunDefT _ retType ident args _)) = do
+    createClassTypeFromClassMembersHelp accClassType (A.ClassMethodT pos (A.FunDefT _ retType ident args _)) = do
       case M.lookup ident (cFuncs accClassType) of
         Just _ -> throwError $ functionAlreadyDeclaredForThisClass pos ident
         Nothing -> do
@@ -576,7 +576,7 @@ createClassTypeFromClassMembers pos bClass classMembers = do
               { cFuncs = newCFuncs
               }
 
-    checkSuperClassForClassField :: Maybe A.UIdent -> BNFC'Position -> A.UIdent -> StmtTEval ()
+    checkSuperClassForClassField :: Maybe A.UIdent -> A.BNFC'Position -> A.UIdent -> StmtTEval ()
     checkSuperClassForClassField Nothing _ _ = return ()
     checkSuperClassForClassField (Just superclass) pos ident = do
       env <- get
@@ -585,7 +585,7 @@ createClassTypeFromClassMembers pos bClass classMembers = do
         Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
         Nothing -> checkSuperClassForClassField (baseClass superClassValue) pos ident
 
-    checkSuperClassForClassMethod :: Maybe A.UIdent -> BNFC'Position -> A.UIdent -> A.Type -> StmtTEval ()
+    checkSuperClassForClassMethod :: Maybe A.UIdent -> A.BNFC'Position -> A.UIdent -> A.Type -> StmtTEval ()
     checkSuperClassForClassMethod Nothing _ _ _ = return ()
     checkSuperClassForClassMethod (Just superclass) pos ident funType = do
       env <- get
@@ -600,8 +600,8 @@ runStmtTEval env e = runIdentity (runExceptT (runStateT e env))
 -- Build in functions
 printString :: A.TopDef
 printString =
-  TopFuncDef noPos $
-    FunDefT
+  A.TopFuncDef noPos $
+    A.FunDefT
       noPos
       (A.TVoid noPos)
       (A.UIdent "printString")
@@ -610,8 +610,8 @@ printString =
 
 printInt :: A.TopDef
 printInt =
-  TopFuncDef noPos $
-    FunDefT
+  A.TopFuncDef noPos $
+    A.FunDefT
       noPos
       (A.TVoid noPos)
       (A.UIdent "printInt")
