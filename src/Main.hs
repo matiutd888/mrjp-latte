@@ -3,14 +3,14 @@
 -- | Program to test parser.
 module Main where
 
-import AbsLatte (Program)
 import Control.Monad
 import Control.Monad.Except
-import LexLatte (Token, mkPosToken)
-import ParLatte (myLexer, pProgram)
-import PrintLatte (Print, printTree)
+import Grammar.AbsLatte (Program)
+import Grammar.LexLatte (Token, mkPosToken)
+import Grammar.ParLatte (myLexer, pProgram)
+import Grammar.PrintLatte (Print, printTree)
+import Grammar.SkelLatte ()
 import qualified SemanticAnalysis as SA
-import SkelLatte ()
 import System.Environment (getArgs)
 import System.Exit
 import System.Exit (exitFailure)

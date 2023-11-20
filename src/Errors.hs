@@ -1,10 +1,9 @@
 module Errors where
 
-import AbsLatte (BNFC'Position, HasPosition (hasPosition))
-import AbsLatte as A
-import qualified AbsLatte as A
 import Data.String (String)
-import PrintLatte
+import Grammar.AbsLatte (BNFC'Position, HasPosition (hasPosition))
+import qualified Grammar.AbsLatte as A
+import Grammar.PrintLatte
 
 semanticAnalysisError :: String
 semanticAnalysisError = "SEMANTIC ANALYSIS ERROR "
@@ -17,7 +16,7 @@ showPositionOf :: A.HasPosition a => a -> String
 showPositionOf = showPosition . A.hasPosition
 
 undefinedReferenceMessage :: A.UIdent -> A.BNFC'Position -> String
-undefinedReferenceMessage (UIdent x) pos =
+undefinedReferenceMessage (A.UIdent x) pos =
   showPosition pos ++ "undefined reference " ++ show x
 
 errorMessageWrongType :: A.BNFC'Position -> A.Type -> A.Type -> String
@@ -72,8 +71,8 @@ classHasAlreadyBeenDeclared pos ident =
 cyclicInheritance :: A.BNFC'Position -> String
 cyclicInheritance pos = showPosition pos ++ "cyclic inheritance detected"
 
-expectedTypeMessage :: Type -> String
+expectedTypeMessage :: A.Type -> String
 expectedTypeMessage t = "expected type " ++ printTree t
 
-unexpectedTypeMessage :: Type -> String
+unexpectedTypeMessage :: A.Type -> String
 unexpectedTypeMessage t = "unexpected type " ++ printTree t

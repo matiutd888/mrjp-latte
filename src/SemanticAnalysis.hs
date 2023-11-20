@@ -3,7 +3,6 @@
 
 module SemanticAnalysis where
 
-import qualified AbsLatte as A
 import Control.Monad (foldM, when)
 import Control.Monad.Error (MonadError (throwError))
 import Control.Monad.Error.Class (liftEither)
@@ -18,7 +17,8 @@ import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import Errors
 import GHC.Base (undefined)
-import PrintLatte
+import qualified Grammar.AbsLatte as A
+import Grammar.PrintLatte
 import System.Posix.Internals (fdType)
 import Text.XHtml (base)
 import Utils

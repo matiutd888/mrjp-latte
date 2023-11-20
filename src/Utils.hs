@@ -2,10 +2,10 @@
 
 module Utils where
 
-import AbsLatte as A
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Text.Lazy.Builder
+import Grammar.AbsLatte as A
 import System.Exit (exitFailure)
 import System.FilePath
 import System.IO

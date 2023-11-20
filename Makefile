@@ -11,9 +11,9 @@ src/Grammar/AbsLatte.hs: Latte.cf
 	mkdir -p buildGrammar
 	mkdir -p src/Grammar
 	rm -rf src/Grammar/*
-	$(BNFC_COMMAND) -m --functor -o buildGrammar Latte.cf  
+	$(BNFC_COMMAND) -m --functor -p Grammar -o buildGrammar Latte.cf
 	make -C buildGrammar
-	cp buildGrammar/*.hs src/Grammar/
+	cp buildGrammar/Grammar/*.hs src/Grammar/
 	rm -rf src/Grammar/TestLatte.hs
 
 lib/runtime.bc: lib-sources/runtime.ll
