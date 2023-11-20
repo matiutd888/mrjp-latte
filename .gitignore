@@ -1,3 +1,5 @@
+**/*.class
+**/*.java
 **/*.o
 **/*.hi
 src/Grammar
