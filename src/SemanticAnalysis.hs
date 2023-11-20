@@ -455,7 +455,7 @@ typeProgram (A.ProgramT _ topdefs) = do
   mapM_ addTopDefToEnv topdefs
   env <- get
   liftEither $ checkForCycles (classes env)
-
+  mapM_ typeTopDef topdefs
   return ()
 
 checkForCycles :: M.Map A.UIdent ClassType -> Either String ()
@@ -501,6 +501,22 @@ addTopDefToEnv (A.TopClassDef pos classDef) = do
           classType
           (classes env)
   put $ env {classes = newClasses}
+
+typeTopDef :: A.TopDef -> StmtTEval ()
+typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
+  env <- get
+  let incrementedLevel = level env + 1
+  envWithAddedParams <- foldM (addArgToEnv incrementedLevel) (env {level = incrementedLevel}) args
+  put $
+    env
+      { variableLevels = variableLevels envWithAddedParams,
+        localVariables = localVariables envWithAddedParams,
+        functionRetType = retType,
+        level = incrementedLevel
+      }
+  typeStmt $ A.SBStmt (hasPosition block) block
+  put env
+typeTopDef (A.TopClassDef pos classDef) = undefined
 
 -- data ClassType = ClassType
 --   { cAttrs :: M.Map A.UIdent A.Type,
