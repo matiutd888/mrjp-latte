@@ -44,7 +44,6 @@ SCond.      Stmt 	::= "if" "(" Expr ")" Stmt  ;
 SCondElse.  Stmt 	::= "if" "(" Expr ")" Stmt "else" Stmt  ;
 
 SWhile.     Stmt 	::= "while" "(" Expr ")" Stmt ;
-SFor.       Stmt 	::= "for" "(" Type UIdent ":" Expr ")" Stmt ;
 
 SExp.      Stmt 	::= Expr  ";" ;
 
@@ -65,9 +64,12 @@ separator Type "," ;
 -- Expressions ---------------------------------------------
 
 ENewObject.	Expr6 	::= "new" Type ;
+ESelf. Expr6 ::= "self";
 
 EMember.	 Expr6 	::= Expr6 "." UIdent ;
 EMemberCall. Expr6 	::= Expr6 "." UIdent "(" [Expr] ")"  ;
+
+
 
 EVar. 		Expr6 	::= UIdent ;
 ELitInt. 	Expr6   ::= Integer ;

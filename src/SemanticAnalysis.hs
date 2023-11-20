@@ -6,7 +6,9 @@ module SemanticAnalysis where
 import AbsLatte (BNFC'Position)
 import AbsLatte as A
 import qualified AbsLatte as A
+import Control.Monad (foldM)
 import Control.Monad.Error (MonadError (throwError))
+import Control.Monad.Error.Class (liftEither)
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.RWS (MonadState (get))
@@ -14,29 +16,36 @@ import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Either as DE
 import qualified Data.Map as M
+import qualified Data.Maybe as DM
+import qualified Data.Set as S
 import Errors
 import GHC.Base (undefined)
 import PrintLatte
+import System.Posix.Internals (fdType)
+import Text.XHtml (base)
 import Utils
 import Prelude as P
 
--- Variables (holds variables of any type).
+-- Variables (holds localVariables of any type).
 -- Functions (holds function declarations, you can't assign to such functions. This map doesn't have info about
---  functions that are lambdas, variables or are function parameters).
+--  functions that are lambdas, localVariables or are function parameters).
 -- Levels (holds info about level on which function or variable was declared - useful to check whether there are two declarations on the same block).
 data Env = Env
-  { variables :: M.Map A.UIdent A.Type,
+  { localVariables :: M.Map A.UIdent A.Type,
     variableLevels :: M.Map A.UIdent Int,
     functions :: M.Map A.UIdent A.Type,
     level :: Int,
-    functionType :: Maybe A.Type,
+    functionRetType :: A.Type,
+    currentClass :: Maybe A.UIdent,
     classes :: M.Map A.UIdent ClassType
   }
   deriving (Show)
 
 data ClassType = ClassType
   { cAttrs :: M.Map A.UIdent A.Type,
-    cFuncs :: M.Map A.UIdent A.Type
+    cFuncs :: M.Map A.UIdent A.Type,
+    baseClass :: Maybe A.UIdent,
+    classPosition :: BNFC'Position
   }
   deriving (Show)
 
@@ -52,7 +61,7 @@ typeOfExpr = undefined
 -- typeOfExpr :: A.Expr -> ExprTEval A.Type
 -- typeOfExpr (A.EVar pos ident) = do
 --   env <- ask
---   case M.lookup ident $ variables env of
+--   case M.lookup ident $ localVariables env of
 --     Nothing ->
 --       case M.lookup ident $ functions env of
 --         Nothing -> throwError $ (undefinedReferenceMessage ident pos) ++ "\n"
@@ -107,9 +116,9 @@ typeOfExpr = undefined
 --       arguments
 --   let blockEnv =
 --         incrementedLevelEnv
---           { functionType = retType,
+--           { functionRetType = retType,
 --             variableLevels = variableLevels envWithAddedParams,
---             variables = variables envWithAddedParams
+--             localVariables = localVariables envWithAddedParams
 --           }
 --   liftEither $
 --     runStmtTEval blockEnv $
@@ -172,7 +181,7 @@ typeOfExpr = undefined
 --             varType <-
 --               do
 --                 env <- ask
---                 case M.lookup ident (variables env) of
+--                 case M.lookup ident (localVariables env) of
 --                   Just t -> return t
 --                   Nothing ->
 --                     throwError $ errorWrongArgumentPassedByReference arg param
@@ -218,6 +227,11 @@ typeOfExpr = undefined
 --     (isType t typeConstructor)
 --     (errorMessageWrongType pos t $ typeConstructor pos)
 
+checkExpressionIsLValue :: A.Expr -> StmtTEval ()
+checkExpressionIsLValue (A.EVar _ _) = return ()
+checkExpressionIsLValue (A.EMember _ _ _) = return ()
+checkExpressionIsLValue e = throwError $ errorMessageNotAnLValue (A.hasPosition e) e
+
 -- Statement typechecker
 type StmtTEval a = StateT Env (ExceptT String Identity) a
 
@@ -253,11 +267,12 @@ typeStmt (A.SDecl _ t items) = do
   where
     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
     addItemToEnv itemType (A.SNoInit pos ident) = do
+      -- TODO check for shadowing
       env <- get
       checkVariableLevel pos ident
       put $
         env
-          { variables = M.insert ident itemType (variables env),
+          { localVariables = M.insert ident itemType (localVariables env),
             variableLevels = M.insert ident (level env) (variableLevels env)
           }
       return ()
@@ -266,46 +281,37 @@ typeStmt (A.SDecl _ t items) = do
       env <- get
       put $
         env
-          { variables = M.insert ident t (variables env),
+          { localVariables = M.insert ident t (localVariables env),
             variableLevels = M.insert ident (level env) (variableLevels env)
           }
       checkExpressionType itemType expr
       return ()
-typeStmt _ = undefined
+typeStmt (A.SRet _ expr) = do
+  env <- get
+  checkExpressionType (functionRetType env) expr
+  return ()
+typeStmt (A.SVRet pos) = do
+  funcT <- liftM functionRetType get
+  let voidType = A.TVoid pos
+  assertM (typesEq voidType funcT) $ errorMessageWrongType pos voidType funcT
+typeStmt (A.SAss _ lExpr rExpr) = do
+  checkExpressionIsLValue lExpr
+  checkExpressionsEqualType lExpr rExpr
+typeStmt (A.SIncr pos lExpr) = do
+  checkExpressionIsLValue lExpr
+  checkExpressionType (A.TInt pos) lExpr
+typeStmt (A.SDecr pos lExpr) = do
+  checkExpressionIsLValue lExpr
+  checkExpressionType (A.TInt pos) lExpr
+typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
+  env <- get
+  put $ incrementBlockLevel env
+  mapM_ typeStmt stmts
+  put env
+  return ()
 
--- typeStmt (A.DeclStmt _ (A.FDecl pos retType ident params body)) = do
---   env <- get
---   checkFunctionLevel pos ident
---   let newFunctions =
---         M.insert
---           ident
---           (A.Function pos retType (P.map getArgType params))
---           (functions env)
---   let newFunctionLevels = M.insert ident (level env) (functionLevels env)
---   let incrementedLevel = level env + 1
---   envWithAddedParams <-
---     foldM (addArgToEnv incrementedLevel) (env {level = incrementedLevel}) params
---   put $
---     env
---       { functions = newFunctions,
---         variableLevels = variableLevels envWithAddedParams,
---         variables = variables envWithAddedParams,
---         functionLevels = newFunctionLevels,
---         functionType = retType,
---         level = incrementedLevel
---       }
---   typeStmt $ A.BStmt (hasPosition body) body
---   put $ env {functions = newFunctions, functionLevels = newFunctionLevels}
--- typeStmt (A.Ret _ expr) = do
---   env <- get
---   checkExpressionType (functionType env) expr
---   return ()
--- typeStmt (A.VRet pos) = do
---   funcT <- liftM functionType get
---   let voidType = A.Void pos
---   assertM (typesEq voidType funcT) $ errorMessageWrongType pos voidType funcT
 -- typeStmt (A.Ass pos ident expr) = do
---   vars <- liftM variables get
+--   vars <- liftM localVariables get
 --   case M.lookup ident vars of
 --     Nothing ->
 --       throwError $
@@ -334,7 +340,7 @@ typeStmt _ = undefined
 --       -- Same code as during assignment, only don't check the type of expression
 --       -- (as we know the type from typing the tuple).
 --       do
---         vars <- liftM variables get
+--         vars <- liftM localVariables get
 --         case M.lookup ident vars of
 --           Nothing ->
 --             throwError $
@@ -366,23 +372,6 @@ typeStmt _ = undefined
 --   mapM_ typeStmt stmts
 --   put env
 --   return ()
-
--- -- Adds arg to variables map and levels map.
--- addArgToEnv :: MonadError String m => Int -> Env -> Arg -> m Env
--- addArgToEnv newLevel env (Arg pos (ArgT _ t) ident) = do
---   liftEither $ runStmtTEval env $ checkVariableLevel pos ident
---   return
---     env
---       { variables = M.insert ident t (variables env),
---         variableLevels = M.insert ident newLevel (variableLevels env)
---       }
--- addArgToEnv newLevel env (Arg pos (ArgRef _ t) ident) = do
---   liftEither $ runStmtTEval env $ checkVariableLevel pos ident
---   return
---     env
---       { variables = M.insert ident t (variables env),
---         variableLevels = M.insert ident newLevel (variableLevels env)
---       }
 
 -- Check if variable ident can be declared at the given level.
 checkVariableLevel :: BNFC'Position -> A.UIdent -> StmtTEval ()
@@ -426,6 +415,15 @@ checkTypeCorrectUtil _ _ = return ()
 --           ++ printTree ident
 --           ++ " was already declared at this level"
 
+checkExpressionsEqualType :: A.Expr -> A.Expr -> StmtTEval ()
+checkExpressionsEqualType e1 e2 = do
+  env <- get
+  expr1Type <- liftEither $ runExprTEval env (typeOfExpr e1)
+  expr2Type <- liftEither $ runExprTEval env (typeOfExpr e2)
+  assertM (typesEq expr2Type expr1Type) $
+    errorMessageWrongType (hasPosition e1) expr2Type expr1Type
+  return ()
+
 checkExpressionType :: A.Type -> A.Expr -> StmtTEval ()
 checkExpressionType t expr = do
   env <- get
@@ -439,18 +437,152 @@ checkIfMainDef (TopFuncDef _ (A.FunDefT _ retType ident args _)) =
   ident == A.UIdent "main" && isType retType A.TInt && args == []
 checkIfMainDef _ = False
 
+getArgType :: A.Arg -> A.Type
+getArgType (A.ArgT _ t _) = t
+
+addArgToEnv :: MonadError String m => Int -> Env -> Arg -> m Env
+addArgToEnv newLevel env (A.ArgT pos t ident) = do
+  -- TODO add here a warning if we shadow a variable / class variable
+  liftEither $ runStmtTEval env $ checkVariableLevel pos ident
+  return
+    env
+      { localVariables = M.insert ident t (localVariables env),
+        variableLevels = M.insert ident newLevel (variableLevels env)
+      }
+
 typeProgram :: A.Program -> StmtTEval ()
-typeProgram (A.ProgramT _ funcs) = do
-  assertM (P.any checkIfMainDef funcs) $ "No main function"
-  mapM_ typeTopDef funcs
+typeProgram (A.ProgramT _ topdefs) = do
+  assertM (P.any checkIfMainDef topdefs) $ "No main function"
+  mapM_ addTopDefToEnv topdefs
+  env <- get
+  liftEither $ checkForCycles (classes env)
+
   return ()
 
-typeTopDef :: A.TopDef -> StmtTEval ()
-typeTopDef = undefined
+checkForCycles :: M.Map A.UIdent ClassType -> Either String ()
+checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
+  where
+    checkForCyclesHelp :: S.Set A.UIdent -> A.UIdent -> Either String (S.Set A.UIdent)
+    checkForCyclesHelp previousVisited currClass = checkForCyclesHelpRec previousVisited S.empty currClass
 
--- typeTopDef :: A.TopDef -> StmtTEval ()
--- typeTopDef (A.FnDef pos retType ident args body) =
---   typeStmt (A.DeclStmt pos (A.FDecl pos retType ident args body))
+    checkForCyclesHelpRec :: S.Set A.UIdent -> S.Set A.UIdent -> A.UIdent -> Either String (S.Set A.UIdent)
+    checkForCyclesHelpRec previousVisited visited currClass = do
+      let currClassT = DM.fromJust $ M.lookup currClass graph
+      assertM (S.notMember currClass visited) $ cyclicInheritance $ classPosition currClassT
+      if (S.member currClass previousVisited)
+        then return (S.union visited previousVisited)
+        else case currClassT of
+          (ClassType _ _ (Just baseClass) _) -> do
+            let newVisited = S.insert currClass visited
+            checkForCyclesHelpRec previousVisited newVisited baseClass
+          _ -> return (S.union visited previousVisited)
+
+-- This only adds functions to the environment
+addTopDefToEnv :: A.TopDef -> StmtTEval ()
+addTopDefToEnv (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
+  env <- get
+  _ <-
+    if (M.member funName (functions env))
+      then throwError $ functionHasAlreadyBeenDeclared pos funName
+      else return ()
+  let newFunctions =
+        M.insert
+          funName
+          (A.TFun pos retType (P.map getArgType args))
+          (functions env)
+  put $ env {functions = newFunctions}
+addTopDefToEnv (A.TopClassDef pos classDef) = do
+  let className = getClassName classDef
+  env <- get
+  _ <-
+    if (M.member className (classes env))
+      then throwError $ classHasAlreadyBeenDeclared pos className
+      else return ()
+  classType <- createClassTypeFromClassDef classDef
+  let newClasses =
+        M.insert
+          className
+          classType
+          (classes env)
+  put $ env {classes = newClasses}
+
+-- data ClassType = ClassType
+--   { cAttrs :: M.Map A.UIdent A.Type,
+--     cFuncs :: M.Map A.UIdent A.Type,
+--     baseClass :: Maybe A.UIdent
+--   }
+--   deriving (Show)
+
+-- data Env = Env
+--   { localVariables :: M.Map A.UIdent A.Type,
+--     variableLevels :: M.Map A.UIdent Int,
+--     functions :: M.Map A.UIdent A.Type,
+--     level :: Int,
+--     functionRetType :: A.Type,
+--     currentClass :: Maybe A.UIdent,
+--     classes :: M.Map A.UIdent ClassType
+--   }
+--   deriving (Show)
+
+getClassName :: A.ClassDef -> A.UIdent
+getClassName (A.ClassDefT _ className _) = className
+getClassName (A.ClassExtDefT _ className _ _) = className
+
+createClassTypeFromClassDef :: A.ClassDef -> StmtTEval ClassType
+createClassTypeFromClassDef (A.ClassDefT pos className classMembers) = createClassTypeFromClassMembers pos DM.Nothing classMembers
+createClassTypeFromClassDef (A.ClassExtDefT pos className baseClassName classMembers) = createClassTypeFromClassMembers pos (DM.Just baseClassName) classMembers
+
+createClassTypeFromClassMembers :: BNFC'Position -> Maybe A.UIdent -> [A.ClassMember] -> StmtTEval ClassType
+createClassTypeFromClassMembers pos bClass classMembers = do
+  let acc =
+        ClassType
+          { cAttrs = M.empty,
+            cFuncs = M.empty,
+            baseClass = bClass,
+            classPosition = pos
+          }
+  foldM createClassTypeFromClassMembersHelp acc classMembers
+  where
+    createClassTypeFromClassMembersHelp :: ClassType -> A.ClassMember -> StmtTEval ClassType
+    createClassTypeFromClassMembersHelp accClassType (A.ClassFieldT pos t ident) = do
+      case M.lookup ident (cAttrs accClassType) of
+        Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
+        Nothing -> do
+          -- checkSuperClassForClassField (baseClass accClassType) pos ident
+          let newCAttrs = M.insert ident t (cAttrs accClassType)
+          return
+            accClassType
+              { cAttrs = newCAttrs
+              }
+    createClassTypeFromClassMembersHelp accClassType (A.ClassMethodT pos (FunDefT _ retType ident args _)) = do
+      case M.lookup ident (cFuncs accClassType) of
+        Just _ -> throwError $ functionAlreadyDeclaredForThisClass pos ident
+        Nothing -> do
+          let fType = A.TFun pos retType (P.map getArgType args)
+          -- checkSuperClassForClassMethod (baseClass accClassType) pos ident fType
+          let newCFuncs = M.insert ident fType (cFuncs accClassType)
+          return
+            accClassType
+              { cFuncs = newCFuncs
+              }
+
+    checkSuperClassForClassField :: Maybe A.UIdent -> BNFC'Position -> A.UIdent -> StmtTEval ()
+    checkSuperClassForClassField Nothing _ _ = return ()
+    checkSuperClassForClassField (Just superclass) pos ident = do
+      env <- get
+      let superClassValue = DM.fromJust (M.lookup superclass (classes env))
+      case M.lookup ident (cAttrs superClassValue) of
+        Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
+        Nothing -> checkSuperClassForClassField (baseClass superClassValue) pos ident
+
+    checkSuperClassForClassMethod :: Maybe A.UIdent -> BNFC'Position -> A.UIdent -> A.Type -> StmtTEval ()
+    checkSuperClassForClassMethod Nothing _ _ _ = return ()
+    checkSuperClassForClassMethod (Just superclass) pos ident funType = do
+      env <- get
+      let superClassValue = DM.fromJust (M.lookup superclass (classes env))
+      case M.lookup ident (cAttrs superClassValue) of
+        Just t -> assertM (typesEq t funType) $ functionWithDifferentTypeAlreadyDeclaredForThisClass pos ident
+        Nothing -> checkSuperClassForClassMethod (baseClass superClassValue) pos ident funType
 
 runStmtTEval :: Env -> StmtTEval a -> Either String (a, Env)
 runStmtTEval env e = runIdentity (runExceptT (runStateT e env))
@@ -498,18 +630,19 @@ addFunctions :: Env -> Env
 addFunctions e = snd $ DE.fromRight ((), initEnv) $ runStmtTEval e x
   where
     x = do
-      typeTopDef SemanticAnalysis.printString
-      typeTopDef printInt
+      addTopDefToEnv SemanticAnalysis.printString
+      addTopDefToEnv printInt
 
 initEnv :: Env
 initEnv =
   addFunctions $
     Env
-      { variables = M.empty,
+      { localVariables = M.empty,
         variableLevels = M.empty,
         functions = M.empty,
         level = 0,
-        functionType = Nothing,
+        functionRetType = A.TVoid A.BNFC'NoPosition, -- won't be used anyway.,
+        currentClass = Nothing,
         classes = M.empty
       }
 
