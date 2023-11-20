@@ -1,7 +1,6 @@
 module Errors where
 
 import Data.String (String)
-import Grammar.AbsLatte (BNFC'Position, HasPosition (hasPosition))
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte
 
