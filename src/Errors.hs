@@ -25,7 +25,7 @@ errorMessageWrongType pos received expected =
   showPosition pos
     ++ unexpectedTypeMessage received
     ++ ", "
-    ++ (expectedTypeMessage expected)
+    ++ expectedTypeMessage expected
 
 errorMessageNotAnLValue :: BNFC'Position -> A.Expr -> String
 errorMessageNotAnLValue pos expr =

@@ -290,7 +290,7 @@ typeStmt (A.SRet _ expr) = do
   checkExpressionType (functionRetType env) expr
   return ()
 typeStmt (A.SVRet pos) = do
-  funcT <- liftM functionRetType get
+  funcT <- gets functionRetType
   let voidType = A.TVoid pos
   assertM (typesEq voidType funcT) $ errorMessageWrongType pos voidType funcT
 typeStmt (A.SAss _ lExpr rExpr) = do
@@ -451,12 +451,11 @@ addArgToEnv newLevel env (A.ArgT pos t ident) = do
 
 typeProgram :: A.Program -> StmtTEval ()
 typeProgram (A.ProgramT _ topdefs) = do
-  assertM (P.any checkIfMainDef topdefs) $ "No main function"
+  assertM (P.any checkIfMainDef topdefs) "No main function"
   mapM_ addTopDefToEnv topdefs
   env <- get
   liftEither $ checkForCycles (classes env)
   mapM_ typeTopDef topdefs
-  return ()
 
 checkForCycles :: M.Map A.UIdent ClassType -> Either String ()
 checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
@@ -516,6 +515,7 @@ typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
       }
   typeStmt $ A.SBStmt (hasPosition block) block
   put env
+-- TODO this is the next thing to do!
 typeTopDef (A.TopClassDef pos classDef) = undefined
 
 -- data ClassType = ClassType
