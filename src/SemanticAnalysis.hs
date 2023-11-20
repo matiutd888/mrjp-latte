@@ -3,8 +3,6 @@
 
 module SemanticAnalysis where
 
-import AbsLatte (BNFC'Position)
-import AbsLatte as A
 import qualified AbsLatte as A
 import Control.Monad (foldM, when)
 import Control.Monad.Error (MonadError (throwError))

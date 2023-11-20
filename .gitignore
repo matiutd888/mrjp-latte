@@ -1,6 +1,6 @@
 **/*.o
 **/*.hi
-src/grammar
+src/Grammar
 build
 .vscode
 buildGrammar
