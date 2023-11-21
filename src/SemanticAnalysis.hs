@@ -13,11 +13,14 @@ import qualified Data.Either as DE
 import qualified Data.Map as M
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
+import qualified Distribution.Simple as A
 import Errors
 import GHC.Base (undefined)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte
+import System.Posix (blockSignals)
 import System.Posix.Internals (fdType)
+import System.Process (CreateProcess (env))
 import Text.XHtml (base)
 import Utils
 import Prelude as P
@@ -41,7 +44,8 @@ data ClassType = ClassType
   { cAttrs :: M.Map A.UIdent A.Type,
     cFuncs :: M.Map A.UIdent A.Type,
     baseClass :: Maybe A.UIdent,
-    classPosition :: A.BNFC'Position
+    classPosition :: A.BNFC'Position,
+    cName :: A.UIdent
   }
   deriving (Show)
 
@@ -466,7 +470,7 @@ checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
       if S.member currClass previousVisited
         then return (S.union visited previousVisited)
         else case currClassT of
-          (ClassType _ _ (Just baseClass) _) -> do
+          (ClassType _ _ (Just baseClass) _ _) -> do
             let newVisited = S.insert currClass visited
             checkForCyclesHelpRec previousVisited newVisited baseClass
           _ -> return (S.union visited previousVisited)
@@ -497,8 +501,21 @@ addTopDefToEnv (A.TopClassDef pos classDef) = do
           (classes env)
   put $ env {classes = newClasses}
 
-typeTopDef :: A.TopDef -> StmtTEval ()
-typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
+checkReturn :: A.Stmt -> StmtTEval ()
+checkReturn _ = undefined
+
+getSomethingFromClassOrSuperClasses :: (ClassType -> Maybe a) -> A.UIdent -> Env -> Maybe a
+getSomethingFromClassOrSuperClasses method className env =
+  let cType = DM.fromJust $ M.lookup className (classes env)
+   in case method cType of
+        Just x -> return x
+        Nothing -> do
+          superClass <- baseClass cType
+          getSomethingFromClassOrSuperClasses method superClass env
+
+-- Doesn't change the environment
+validateMethod :: A.Type -> [A.Arg] -> A.Block -> StmtTEval ()
+validateMethod retType args block = do
   env <- get
   let incrementedLevel = level env + 1
   envWithAddedParams <- foldM (addArgToEnv incrementedLevel) (env {level = incrementedLevel}) args
@@ -510,9 +527,42 @@ typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
         level = incrementedLevel
       }
   typeStmt $ A.SBStmt (A.hasPosition block) block
+  checkReturn $ A.SBStmt (A.hasPosition block) block
   put env
--- TODO this is the next thing to do!
-typeTopDef (A.TopClassDef pos classDef) = undefined
+
+typeTopDef :: A.TopDef -> StmtTEval ()
+typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = validateMethod retType args block
+typeTopDef (A.TopClassDef pos (A.ClassDefT _ uident classMembers)) = typeClassHelp uident classMembers
+typeTopDef (A.TopClassDef pos (A.ClassExtDefT _ uident _ classMembers)) = typeClassHelp uident classMembers
+
+typeClassHelp :: A.UIdent -> [A.ClassMember] -> StmtTEval ()
+typeClassHelp uident classMembers = do
+  env <- get
+  let cType = DM.fromJust $ M.lookup uident (classes env)
+  liftEither $ mapM_ (validateClassAttribute cType env) $ M.keys $ cAttrs cType
+  undefined
+  where
+    validateClassAttribute :: ClassType -> Env -> A.UIdent -> Either String ()
+    validateClassAttribute cType env attribute = case superClassHasAttribute of
+      Just _ -> throwError $ attributeAlreadyDeclaredForThisClassOrSuprclass (A.hasPosition $ DM.fromJust $ M.lookup attribute $ cAttrs cType) attribute
+      Nothing -> return ()
+      where
+        superClassHasAttribute :: Maybe A.Type
+        superClassHasAttribute = do
+          let f = M.lookup attribute . cAttrs
+          x <- baseClass cType
+          getSomethingFromClassOrSuperClasses f x env
+
+    validateClassMethod :: ClassType -> A.ClassMember -> StmtTEval ()
+    validateClassMethod cType (A.ClassMethodT _ (A.FunDefT _ retType name args block)) = do
+      env <- get
+      let envWithAddedClass =
+            env
+              { currentClass = Just $ cName cType
+              }
+      validateMethod retType args block
+      put env
+    validateClassMethod _ _ = return ()
 
 -- data ClassType = ClassType
 --   { cAttrs :: M.Map A.UIdent A.Type,
@@ -537,17 +587,18 @@ getClassName (A.ClassDefT _ className _) = className
 getClassName (A.ClassExtDefT _ className _ _) = className
 
 createClassTypeFromClassDef :: A.ClassDef -> StmtTEval ClassType
-createClassTypeFromClassDef (A.ClassDefT pos className classMembers) = createClassTypeFromClassMembers pos DM.Nothing classMembers
-createClassTypeFromClassDef (A.ClassExtDefT pos className baseClassName classMembers) = createClassTypeFromClassMembers pos (DM.Just baseClassName) classMembers
+createClassTypeFromClassDef (A.ClassDefT pos className classMembers) = createClassTypeFromClassMembers pos className DM.Nothing classMembers
+createClassTypeFromClassDef (A.ClassExtDefT pos className baseClassName classMembers) = createClassTypeFromClassMembers pos className (DM.Just baseClassName) classMembers
 
-createClassTypeFromClassMembers :: A.BNFC'Position -> Maybe A.UIdent -> [A.ClassMember] -> StmtTEval ClassType
-createClassTypeFromClassMembers pos bClass classMembers = do
+createClassTypeFromClassMembers :: A.BNFC'Position -> A.UIdent -> Maybe A.UIdent -> [A.ClassMember] -> StmtTEval ClassType
+createClassTypeFromClassMembers pos className bClass classMembers = do
   let acc =
         ClassType
           { cAttrs = M.empty,
             cFuncs = M.empty,
             baseClass = bClass,
-            classPosition = pos
+            classPosition = pos,
+            cName = className
           }
   foldM createClassTypeFromClassMembersHelp acc classMembers
   where

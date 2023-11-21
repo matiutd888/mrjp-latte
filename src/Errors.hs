@@ -39,6 +39,13 @@ attributeAlreadyDeclaredForThisClass pos ident =
     ++ printTree ident
     ++ " has already been declared in this class"
 
+attributeAlreadyDeclaredForThisClassOrSuprclass :: A.BNFC'Position -> A.UIdent -> String
+attributeAlreadyDeclaredForThisClassOrSuprclass pos ident =
+  showPosition pos
+    ++ "attribute with name "
+    ++ printTree ident
+    ++ " has already been declared for the superclass of this class"
+
 functionAlreadyDeclaredForThisClass :: A.BNFC'Position -> A.UIdent -> String
 functionAlreadyDeclaredForThisClass pos ident =
   showPosition pos
@@ -51,7 +58,7 @@ functionWithDifferentTypeAlreadyDeclaredForThisClass pos ident =
   showPosition pos
     ++ "function with name "
     ++ printTree ident
-    ++ " and different type has already been declared in this class or its superclasses"
+    ++ " and different type has already been declared in its superclasses"
 
 functionHasAlreadyBeenDeclared :: A.BNFC'Position -> A.UIdent -> String
 functionHasAlreadyBeenDeclared pos ident =
