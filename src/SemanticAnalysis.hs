@@ -88,7 +88,7 @@ typeOfExpr (A.ERel pos e1 _ e2) = do
   return $ A.TBool pos
   where
     checkComparable :: A.Type -> ExprTEval ()
-    checkComparable f@(A.TFun _ _ _) =
+    checkComparable f@A.TFun {} =
       throwError $ typeNotComparable pos f
     checkComparable c@(A.TClass _ _) =
       throwError $ typeNotComparable pos c
