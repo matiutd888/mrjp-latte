@@ -1,6 +1,7 @@
 module Errors where
 
 import Data.String (String)
+import Grammar.AbsLatte (BNFC'Position)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte
 
@@ -70,9 +71,26 @@ functionHasAlreadyBeenDeclared pos ident =
 classHasAlreadyBeenDeclared :: A.BNFC'Position -> A.UIdent -> String
 classHasAlreadyBeenDeclared pos ident =
   showPosition pos
-    ++ "function with name "
+    ++ "class with name "
     ++ printTree ident
     ++ "has already been declared"
+
+selfUsedOutsideOfClass :: BNFC'Position -> String
+selfUsedOutsideOfClass pos = showPosition pos ++ "self used outside the class"
+
+comparingValuesOfDifferentType :: BNFC'Position -> A.Type -> A.Type -> String
+comparingValuesOfDifferentType pos t1 t2 =
+  showPosition pos
+    ++ "comparing values of diferent type, "
+    ++ printTree t1
+    ++ " and "
+    ++ printTree t2
+
+typeNotComparable :: BNFC'Position -> A.Type -> String
+typeNotComparable pos t = showPosition pos ++ "type " ++ printTree t ++ " is not comparable"
+
+noClassOfName :: A.BNFC'Position -> A.UIdent -> String
+noClassOfName pos ident = showPosition pos ++ "no class '" ++ printTree ident ++ "'"
 
 cyclicInheritance :: A.BNFC'Position -> String
 cyclicInheritance pos = showPosition pos ++ "cyclic inheritance detected"

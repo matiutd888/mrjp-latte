@@ -9,12 +9,16 @@ import Control.Monad.Identity
 import Control.Monad.RWS (MonadState (get))
 import Control.Monad.Reader
 import Control.Monad.State
+import qualified Control.Monad.Trans.Accum as M
+import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
+import qualified Control.Monad.Trans.Maybe as A
 import qualified Data.Either as DE
 import qualified Data.Map as M
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import qualified Distribution.Simple as A
 import Errors
+import Foreign.C (throwErrno)
 import GHC.Base (undefined)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte
@@ -55,7 +59,43 @@ runExprTEval :: Env -> ExprTEval a -> Either String a
 runExprTEval env e = runIdentity (runExceptT (runReaderT e env))
 
 typeOfExpr :: A.Expr -> ExprTEval A.Type
-typeOfExpr = undefined
+typeOfExpr (A.ELitInt pos _) = return $ A.TInt pos
+typeOfExpr (A.ELitTrue pos) = return $ A.TBool pos
+typeOfExpr (A.ELitFalse pos) = return $ A.TBool pos
+typeOfExpr (A.EString pos _) = return $ A.TStr pos
+typeOfExpr (A.Not pos e) = do
+  typeOfExpr e >>= checkForType A.TBool pos
+  return $ A.TBool pos
+typeOfExpr (A.EAnd pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
+typeOfExpr (A.EOr pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
+typeOfExpr (A.EAdd pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
+typeOfExpr (A.EMul pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
+typeOfExpr (A.ECastNull pos ident) = do
+  env <- ask
+  case M.lookup ident $ classes env of
+    Nothing -> throwError $ noClassOfName pos ident
+    Just _ -> return $ A.TClass pos ident
+typeOfExpr (A.ESelf pos) = do
+  env <- ask
+  case currentClass env of
+    Just c -> return $ A.TClass pos c
+    Nothing -> throwError $ selfUsedOutsideOfClass pos
+typeOfExpr (A.ERel pos e1 _ e2) = do
+  t1 <- typeOfExpr e1
+  t2 <- typeOfExpr e2
+  assertM (typesEq t1 t2) $ comparingValuesOfDifferentType pos t1 t2
+  checkComparable t1
+  return $ A.TBool pos
+  where
+    checkComparable :: A.Type -> ExprTEval ()
+    checkComparable f@(A.TFun _ _ _) =
+      throwError $ typeNotComparable pos f
+    checkComparable c@(A.TClass _ _) =
+      throwError $ typeNotComparable pos c
+    checkComparable c@(A.TVoid _) =
+      throwError $ typeNotComparable pos c
+    checkComparable _ = return ()
+typeOfExpr _ = undefined
 
 -- Type contains also information about position of the expression that has the type returned.
 -- typeOfExpr :: A.Expr -> ExprTEval A.Type
@@ -204,28 +244,28 @@ typeOfExpr = undefined
 -- getTypeFromArgType (A.ArgRef _ t) = t
 -- getTypeFromArgType (A.ArgT _ t) = t
 
--- typeOfBinOp ::
---   (BNFC'Position -> A.Type) ->
---   (BNFC'Position -> A.Type) ->
---   A.BNFC'Position ->
---   A.Expr ->
---   A.Expr ->
---   ExprTEval A.Type
--- typeOfBinOp typeConstructor retTypeConstructor pos e1 e2 = do
---   typeOfExpr e1 >>= checkForType typeConstructor (A.hasPosition e1)
---   typeOfExpr e2 >>= checkForType typeConstructor (A.hasPosition e2)
---   return $ retTypeConstructor pos
+typeOfBinOp ::
+  (A.BNFC'Position -> A.Type) ->
+  (A.BNFC'Position -> A.Type) ->
+  A.BNFC'Position ->
+  A.Expr ->
+  A.Expr ->
+  ExprTEval A.Type
+typeOfBinOp typeConstructor retTypeConstructor pos e1 e2 = do
+  typeOfExpr e1 >>= checkForType typeConstructor (A.hasPosition e1)
+  typeOfExpr e2 >>= checkForType typeConstructor (A.hasPosition e2)
+  return $ retTypeConstructor pos
 
--- checkForType ::
---   MonadError String m =>
---   (BNFC'Position -> A.Type) ->
---   A.BNFC'Position ->
---   A.Type ->
---   m ()
--- checkForType typeConstructor pos t =
---   assertM
---     (isType t typeConstructor)
---     (errorMessageWrongType pos t $ typeConstructor pos)
+checkForType ::
+  MonadError String m =>
+  (A.BNFC'Position -> A.Type) ->
+  A.BNFC'Position ->
+  A.Type ->
+  m ()
+checkForType typeConstructor pos t =
+  assertM
+    (isType t typeConstructor)
+    (errorMessageWrongType pos t $ typeConstructor pos)
 
 checkExpressionIsLValue :: A.Expr -> StmtTEval ()
 checkExpressionIsLValue (A.EVar _ _) = return ()
@@ -554,14 +594,29 @@ typeClassHelp uident classMembers = do
           getSomethingFromClassOrSuperClasses f x env
 
     validateClassMethod :: ClassType -> A.ClassMember -> StmtTEval ()
-    validateClassMethod cType (A.ClassMethodT _ (A.FunDefT _ retType name args block)) = do
+    validateClassMethod cType (A.ClassMethodT _ (A.FunDefT pos retType name args block)) = do
       env <- get
+      let funcType = A.TFun pos retType $ P.map getArgType args
+      _ <- case superClassHasMethod env of
+        Just func -> unless (typesEq func funcType) $ throwError (functionWithDifferentTypeAlreadyDeclaredForThisClass pos name)
+        _ -> return ()
+
       let envWithAddedClass =
             env
               { currentClass = Just $ cName cType
               }
       validateMethod retType args block
       put env
+      where
+        f :: ClassType -> Maybe A.Type
+        f x = do
+          let cFunType = A.TFun pos retType $ P.map getArgType args
+          M.lookup name (cFuncs x)
+
+        superClassHasMethod :: Env -> Maybe A.Type
+        superClassHasMethod env = do
+          x <- baseClass cType
+          getSomethingFromClassOrSuperClasses f x env
     validateClassMethod _ _ = return ()
 
 -- data ClassType = ClassType
@@ -624,24 +679,6 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
             accClassType
               { cFuncs = newCFuncs
               }
-
-    checkSuperClassForClassField :: Maybe A.UIdent -> A.BNFC'Position -> A.UIdent -> StmtTEval ()
-    checkSuperClassForClassField Nothing _ _ = return ()
-    checkSuperClassForClassField (Just superclass) pos ident = do
-      env <- get
-      let superClassValue = DM.fromJust (M.lookup superclass (classes env))
-      case M.lookup ident (cAttrs superClassValue) of
-        Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
-        Nothing -> checkSuperClassForClassField (baseClass superClassValue) pos ident
-
-    checkSuperClassForClassMethod :: Maybe A.UIdent -> A.BNFC'Position -> A.UIdent -> A.Type -> StmtTEval ()
-    checkSuperClassForClassMethod Nothing _ _ _ = return ()
-    checkSuperClassForClassMethod (Just superclass) pos ident funType = do
-      env <- get
-      let superClassValue = DM.fromJust (M.lookup superclass (classes env))
-      case M.lookup ident (cAttrs superClassValue) of
-        Just t -> assertM (typesEq t funType) $ functionWithDifferentTypeAlreadyDeclaredForThisClass pos ident
-        Nothing -> checkSuperClassForClassMethod (baseClass superClassValue) pos ident funType
 
 runStmtTEval :: Env -> StmtTEval a -> Either String (a, Env)
 runStmtTEval env e = runIdentity (runExceptT (runStateT e env))
