@@ -3,8 +3,20 @@
 
 module SemanticAnalysis where
 
+import Control.Exception (handle)
 import Control.Monad (foldM, when)
 import Control.Monad.Except
+  ( ExceptT,
+    Monad (return, (>>), (>>=)),
+    MonadError (throwError),
+    foldM,
+    foldM_,
+    liftEither,
+    mapM_,
+    runExceptT,
+    unless,
+    when,
+  )
 import Control.Monad.Identity
 import Control.Monad.RWS (MonadState (get))
 import Control.Monad.Reader
@@ -14,6 +26,7 @@ import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
 import qualified Control.Monad.Trans.Maybe as A
 import qualified Data.Either as DE
 import qualified Data.Map as M
+import qualified Data.Maybe as A
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import qualified Distribution.Simple as A
@@ -21,8 +34,9 @@ import Errors
 import Foreign.C (throwErrno)
 import GHC.Base (undefined)
 import qualified Grammar.AbsLatte as A
+import qualified Grammar.AbsLatte as E
 import Grammar.PrintLatte
-import System.Posix (blockSignals)
+import System.Posix (blockSignals, dup)
 import System.Posix.Internals (fdType)
 import System.Process (CreateProcess (env))
 import Text.XHtml (base)
@@ -95,7 +109,33 @@ typeOfExpr (A.ERel pos e1 _ e2) = do
     checkComparable c@(A.TVoid _) =
       throwError $ typeNotComparable pos c
     checkComparable _ = return ()
+typeOfExpr (A.ENewObject pos t) = do
+  env <- ask
+  isValidClass t env
+  where
+    isValidClass :: MonadError String m => A.Type -> Env -> m A.Type
+    isValidClass t@(A.TClass pos ident) env = maybeToError (M.lookup ident (classes env)) (noClassOfName pos ident) >> return t
+    isValidClass t _ = throwError $ showPosition pos ++ "cannot use new operator with type " ++ printTree t
+typeOfExpr (E.EVar pos ident) = do
+  -- First  check local environment
+  -- Then the classes
+  env <- ask
+  case M.lookup ident (localVariables env) of
+    Nothing -> do
+      currClassName <- maybeToError (currentClass env) (undefinedReferenceMessage ident pos)
+      maybeToError (getSomethingFromClassOrSuperClasses (M.lookup ident . cAttrs) currClassName env) (undefinedReferenceMessage ident pos)
+    Just ty -> return ty
+typeOfExpr (A.EApp pos uident exprs) = do
+  env <- ask
+  f <- case currentClass env of
+    Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
+    Just currClassName -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup uident . cAttrs) currClassName env) (undefinedReferenceMessage uident pos)
+  handleFunction pos f exprs
 typeOfExpr _ = undefined
+
+maybeToError :: MonadError String m => Maybe a -> String -> m a
+maybeToError (Just x) _ = return x
+maybeToError Nothing s = throwError s
 
 -- Type contains also information about position of the expression that has the type returned.
 -- typeOfExpr :: A.Expr -> ExprTEval A.Type
@@ -191,51 +231,24 @@ typeOfExpr _ = undefined
 -- ~ showPosition pos ++ "no function " ++ printTree ident ++ " found")
 
 -- Checks if function application is performed correctly. If so, returns its return type.
--- handleFunction :: A.BNFC'Position -> A.Type -> [A.Expr] -> ExprTEval A.Type
--- handleFunction pos f args =
---   case f of
---     A.Function _ retType params ->
---       (checkArgsCorrectness pos params args) >>= (\_ -> return retType)
---     _ -> throwError $ notAFunctionMessage pos f
+handleFunction :: A.BNFC'Position -> A.Type -> [A.Expr] -> ExprTEval A.Type
+handleFunction pos (A.TFun _ retType params) args =
+  checkArgsCorrectness pos params args >> return retType
+handleFunction _ _ _ = undefined
 
--- checkArgsCorrectness ::
---   A.BNFC'Position -> [A.ArgType] -> [A.Expr] -> ExprTEval ()
--- checkArgsCorrectness pos params args = do
---   assertM (P.length params == P.length args) $
---     showPosition pos
---       ++ "function expected "
---       ++ show (P.length params)
---       ++ " argument(s), received "
---       ++ show (P.length args)
---   zipWithM checkArgCorrectness args params
---   return ()
+checkArgsCorrectness ::
+  A.BNFC'Position -> [A.Type] -> [A.Expr] -> ExprTEval ()
+checkArgsCorrectness pos params args = do
+  assertM (P.length params == P.length args) $
+    showPosition pos
+      ++ "function expected "
+      ++ show (P.length params)
+      ++ " argument(s), received "
+      ++ show (P.length args)
+  zipWithM_ checkArgCorrectness params args
 
--- checkArgCorrectness :: A.Expr -> A.ArgType -> ExprTEval ()
--- checkArgCorrectness arg param =
---   case param of
---     A.ArgRef _ _ ->
---       case arg of
---         A.EVar _ ident ->
---           -- We evaluate varType by hand because we don't want functions environment to be checked.
---           do
---             varType <-
---               do
---                 env <- ask
---                 case M.lookup ident (localVariables env) of
---                   Just t -> return t
---                   Nothing ->
---                     throwError $ errorWrongArgumentPassedByReference arg param
---             let paramType = (getTypeFromArgType param)
---             assertM
---               (typesEq varType paramType)
---               (errorMessageWrongType (A.hasPosition arg) varType paramType)
---         _ -> throwError $ errorWrongArgumentPassedByReference arg param
---     _ -> do
---       argType <- typeOfExpr arg
---       let paramType = (getTypeFromArgType param)
---       assertM
---         (typesEq argType paramType)
---         (errorMessageWrongType (A.hasPosition arg) argType paramType)
+checkArgCorrectness :: A.Type -> A.Expr -> ExprTEval ()
+checkArgCorrectness param arg = typeOfExpr arg >>= \argType -> assertM (typesEq argType param) (errorMessageWrongType (A.hasPosition arg) argType param)
 
 -- getArgType :: A.Arg -> A.ArgType
 -- getArgType (A.Arg _ t _) = t
