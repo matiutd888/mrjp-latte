@@ -19,6 +19,9 @@ undefinedReferenceMessage :: A.UIdent -> A.BNFC'Position -> String
 undefinedReferenceMessage (A.UIdent x) pos =
   showPosition pos ++ "undefined reference " ++ show x
 
+undefinedMember :: A.BNFC'Position -> A.UIdent -> A.UIdent -> String
+undefinedMember pos c member = showPosition pos ++ "class " ++ printTree c ++ " doesn't have member " ++ printTree member
+
 errorMessageWrongType :: A.BNFC'Position -> A.Type -> A.Type -> String
 errorMessageWrongType pos received expected =
   showPosition pos
@@ -86,8 +89,8 @@ comparingValuesOfDifferentType pos t1 t2 =
     ++ " and "
     ++ printTree t2
 
-typeNotComparable :: BNFC'Position -> A.Type -> String
-typeNotComparable pos t = showPosition pos ++ "type " ++ printTree t ++ " is not comparable"
+typeNotComparable :: BNFC'Position -> A.Type -> A.RelOp -> String
+typeNotComparable pos t relop = showPosition pos ++ "type " ++ printTree t ++ " is not comparable with operation '" ++ printTree relop
 
 noClassOfName :: A.BNFC'Position -> A.UIdent -> String
 noClassOfName pos ident = showPosition pos ++ "no class '" ++ printTree ident ++ "'"

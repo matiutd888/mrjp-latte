@@ -34,6 +34,10 @@ assertM b s =
     then return ()
     else throwError s
 
+maybeToError :: MonadError String m => Maybe a -> String -> m a
+maybeToError (Just x) _ = return x
+maybeToError Nothing s = throwError s
+
 isType :: A.Type -> (BNFC'Position -> A.Type) -> Bool
 isType t1 t2 = typesEq t1 $ t2 BNFC'NoPosition
 

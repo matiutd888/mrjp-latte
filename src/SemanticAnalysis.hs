@@ -80,6 +80,9 @@ typeOfExpr (A.EString pos _) = return $ A.TStr pos
 typeOfExpr (A.Not pos e) = do
   typeOfExpr e >>= checkForType A.TBool pos
   return $ A.TBool pos
+typeOfExpr (A.Neg pos e) = do
+  typeOfExpr e >>= checkForType A.TInt pos
+  return $ A.TInt pos
 typeOfExpr (A.EAnd pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
 typeOfExpr (A.EOr pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
 typeOfExpr (A.EAdd pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
@@ -91,24 +94,31 @@ typeOfExpr (A.ECastNull pos ident) = do
     Just _ -> return $ A.TClass pos ident
 typeOfExpr (A.ESelf pos) = do
   env <- ask
-  case currentClass env of
-    Just c -> return $ A.TClass pos c
-    Nothing -> throwError $ selfUsedOutsideOfClass pos
-typeOfExpr (A.ERel pos e1 _ e2) = do
+  c <- maybeToError (currentClass env) (selfUsedOutsideOfClass pos)
+  return $ A.TClass pos c
+typeOfExpr (A.ERel pos e1 relOp e2) = do
   t1 <- typeOfExpr e1
   t2 <- typeOfExpr e2
   assertM (typesEq t1 t2) $ comparingValuesOfDifferentType pos t1 t2
-  checkComparable t1
+  checkComparable relOp t1
   return $ A.TBool pos
   where
-    checkComparable :: A.Type -> ExprTEval ()
-    checkComparable f@A.TFun {} =
-      throwError $ typeNotComparable pos f
-    checkComparable c@(A.TClass _ _) =
-      throwError $ typeNotComparable pos c
-    checkComparable c@(A.TVoid _) =
-      throwError $ typeNotComparable pos c
-    checkComparable _ = return ()
+    checkComparableEq :: A.Type -> Bool
+    checkComparableEq f@A.TFun {} = False
+    checkComparableEq c@(A.TVoid _) = False
+    checkComparableEq _ = True
+
+    checkComparableLe :: A.Type -> Bool
+    checkComparableLe (A.TInt _) = True
+    checkComparableLe t = False
+
+    checkComparableHelp :: A.RelOp -> A.Type -> Bool
+    checkComparableHelp r@(A.EQU _) t = checkComparableEq t
+    checkComparableHelp r@(A.NE _) t = checkComparableEq t
+    checkComparableHelp _ t = checkComparableLe t
+
+    checkComparable :: A.RelOp -> A.Type -> ExprTEval ()
+    checkComparable r t = assertM (checkComparableHelp r t) (typeNotComparable (A.hasPosition r) t r)
 typeOfExpr (A.ENewObject pos t) = do
   env <- ask
   isValidClass t env
@@ -131,104 +141,20 @@ typeOfExpr (A.EApp pos uident exprs) = do
     Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
     Just currClassName -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup uident . cAttrs) currClassName env) (undefinedReferenceMessage uident pos)
   handleFunction pos f exprs
-typeOfExpr _ = undefined
-
-maybeToError :: MonadError String m => Maybe a -> String -> m a
-maybeToError (Just x) _ = return x
-maybeToError Nothing s = throwError s
-
--- Type contains also information about position of the expression that has the type returned.
--- typeOfExpr :: A.Expr -> ExprTEval A.Type
--- typeOfExpr (A.EVar pos ident) = do
---   env <- ask
---   case M.lookup ident $ localVariables env of
---     Nothing ->
---       case M.lookup ident $ functions env of
---         Nothing -> throwError $ (undefinedReferenceMessage ident pos) ++ "\n"
---         Just t -> return t
---     Just t -> return t
--- -- Literals.
--- typeOfExpr (A.ELitTrue pos) = return $ A.TBool pos
--- typeOfExpr (A.ELitFalse pos) = return $ A.TBool pos
--- typeOfExpr (A.ELitInt pos _) = return $ A.TInt pos
--- typeOfExpr (A.EString pos _) = return $ A.TStr pos
--- -- Binary operator expressions.
--- typeOfExpr (A.EAnd pos e1 e2) = typeOfBinOp A.Bool A.Bool pos e1 e2
--- typeOfExpr (A.EOr pos e1 e2) = typeOfBinOp A.Bool A.Bool pos e1 e2
--- typeOfExpr (A.EAdd pos e1 _ e2) = typeOfBinOp A.Int A.Int pos e1 e2
--- typeOfExpr (A.EMul pos e1 _ e2) = typeOfBinOp A.Int A.Int pos e1 e2
--- typeOfExpr (A.ERel pos e1 _ e2) = do
---   t1 <- typeOfExpr e1
---   t2 <- typeOfExpr e2
---   assertM (typesEq t1 t2) $
---     showPosition pos
---       ++ "comparing values of diferent type, "
---       ++ printTree t1
---       ++ " and "
---       ++ printTree t2
---   checkComparable t1
---   return $ A.Bool pos
---   where
---     checkComparable :: A.Type -> ExprTEval ()
---     checkComparable f@(A.TFun _ _ _) =
---       throwError $ showPosition pos ++ printTree f ++ " type is not comparable"
---     checkComparable _ = return ()
--- -- Unary operator expressions.
--- typeOfExpr (A.Not pos e) = do
---   typeOfExpr e >>= checkForType A.Bool pos
---   return $ A.Bool pos
--- typeOfExpr (A.Neg pos e) = do
---   typeOfExpr e >>= checkForType A.Int pos
---   return $ A.Int pos
--- typeOfExpr (A.ETuple pos l) =
---   -- foldr (liftM2 (:)) (pure []) changes list of monads to monad of list.
---   -- http://learnyouahaskell.com/functors-applicative-functors-and-monoids
---   do
---     listOfTypes <- P.foldr (liftM2 (:)) (pure []) $ typeOfExpr <$> l
---     return $ A.Tuple pos listOfTypes
--- typeOfExpr (A.ELambda pos (A.Lambda _ arguments retType body)) = do
---   env <- ask
---   let incrementedLevelEnv = incrementBlockLevel env
---   envWithAddedParams <-
---     foldM
---       (addArgToEnv (level incrementedLevelEnv))
---       incrementedLevelEnv
---       arguments
---   let blockEnv =
---         incrementedLevelEnv
---           { functionRetType = retType,
---             variableLevels = variableLevels envWithAddedParams,
---             localVariables = localVariables envWithAddedParams
---           }
---   liftEither $
---     runStmtTEval blockEnv $
---       typeStmt $
---         A.BStmt (A.hasPosition body) body
---   return $ Function pos retType $ getArgType <$> arguments
--- typeOfExpr (A.EApp pos callee args) =
---   case callee of
---     A.LambdaCallee p l -> do
---       t <- typeOfExpr (A.ELambda p l)
---       handleFunction pos t args
---     A.UIdentCallee p ident -> do
---       t <- typeOfExpr (A.EVar p ident)
---       -- Evar
---       -- 1. Will check if there exists variable of given iden, if so it returs its type.
---       -- 2. If not, checks if there exists function of given iden, if so, it returns its type.
---       -- What is left to handle is the case when both function and variable of given iden exist and
---       -- variable was not of a suitable type.
---       -- Maybe right now I should not do it.
---       handleFunction pos t args
-
--- ~ catchError
--- ~ (handleFunction pos t args)
--- ~ (\_ -> do
--- ~ env <- ask
--- ~ case M.lookup ident (functions env) of
--- ~ Just t -> handleFunction pos t args
--- ~ Nothing ->
--- ~ throwError $
--- ~ showPosition pos ++ "no function " ++ printTree ident ++ " found")
+typeOfExpr (A.EMember pos expr member) = do
+  env <- ask
+  t <- typeOfExpr expr
+  case t of
+    A.TClass ppos className -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup member . cAttrs) className env) (undefinedMember pos className member)
+    _ -> throwError $ showPosition pos ++ "cannot get a member of expression that is not a class"
+typeOfExpr (A.EMemberCall pos expr member exprs) = do
+  env <- ask
+  t <- typeOfExpr expr
+  case t of
+    A.TClass ppos className -> do
+      f <- maybeToError (getSomethingFromClassOrSuperClasses (M.lookup member . cFuncs) className env) (undefinedMember pos className member)
+      handleFunction pos f exprs
+    _ -> throwError $ showPosition pos ++ "cannot get a member of expression that is not a class"
 
 -- Checks if function application is performed correctly. If so, returns its return type.
 handleFunction :: A.BNFC'Position -> A.Type -> [A.Expr] -> ExprTEval A.Type
@@ -249,13 +175,6 @@ checkArgsCorrectness pos params args = do
 
 checkArgCorrectness :: A.Type -> A.Expr -> ExprTEval ()
 checkArgCorrectness param arg = typeOfExpr arg >>= \argType -> assertM (typesEq argType param) (errorMessageWrongType (A.hasPosition arg) argType param)
-
--- getArgType :: A.Arg -> A.ArgType
--- getArgType (A.Arg _ t _) = t
-
--- getTypeFromArgType :: A.ArgType -> A.Type
--- getTypeFromArgType (A.ArgRef _ t) = t
--- getTypeFromArgType (A.ArgT _ t) = t
 
 typeOfBinOp ::
   (A.BNFC'Position -> A.Type) ->
@@ -362,69 +281,6 @@ typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
   put env
   return ()
 
--- typeStmt (A.Ass pos ident expr) = do
---   vars <- liftM localVariables get
---   case M.lookup ident vars of
---     Nothing ->
---       throwError $
---         showPosition pos ++ "attempting to assign to an undeclared variable"
---     Just t -> checkExpressionType t expr
--- typeStmt (A.TupleAss pos tupleIdents expr) = do
---   env <- get
---   exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
---   case exprType of
---     A.Tuple _ types -> do
---       assertM (P.length types == P.length tupleIdents) $
---         showPosition pos
---           ++ "error unpacking tuple, argument numbers don't match"
---       zipWithM handleTupleIdent tupleIdents types
---       return ()
---     t ->
---       throwError $
---         showPosition pos
---           ++ "attempting to unpack tuple with expression of type "
---           ++ printTree t
---           ++ ", that is not a tuple"
---   where
---     handleTupleIdent :: A.TupleIdent -> A.Type -> StmtTEval ()
---     handleTupleIdent (A.TupleNoIdent _) _ = return ()
---     handleTupleIdent (A.TupleIdent p ident) t =
---       -- Same code as during assignment, only don't check the type of expression
---       -- (as we know the type from typing the tuple).
---       do
---         vars <- liftM localVariables get
---         case M.lookup ident vars of
---           Nothing ->
---             throwError $
---               showPosition p ++ "attempting to assign to an undeclared variable"
---           Just varType ->
---             assertM (typesEq varType t) $
---               showPosition p
---                 ++ "attempting to assign expression of type "
---                 ++ printTree t
---                 ++ " to a variable of type "
---                 ++ printTree varType
---     handleTupleIdent (A.TupleRec _ idents) t = do
---       case t of
---         A.Tuple _ types -> do
---           assertM (P.length types == P.length idents) $
---             showPosition pos
---               ++ "error unpacking tuple, argument numbers don't match"
---           zipWithM handleTupleIdent idents types
---           return ()
---         wrongType ->
---           throwError $
---             showPosition pos
---               ++ "attempting to unpack tuple with expression of type "
---               ++ printTree wrongType
---               ++ ", that is not a tuple"
--- typeStmt (BStmt _ (Block _ stmts)) = do
---   env <- get
---   put $ incrementBlockLevel env
---   mapM_ typeStmt stmts
---   put env
---   return ()
-
 -- Check if variable ident can be declared at the given level.
 checkVariableLevel :: A.BNFC'Position -> A.UIdent -> StmtTEval ()
 checkVariableLevel pos ident = do
@@ -453,19 +309,6 @@ checkTypeCorrectUtil pos (A.TClass _ ident) = do
 checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot use type 'void' in this place"
 checkTypeCorrectUtil pos A.TFun {} = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
 checkTypeCorrectUtil _ _ = return ()
-
--- checkFunctionLevel :: A.BNFC'Position -> Ident -> StmtTEval ()
--- checkFunctionLevel pos ident = do
---   env <- get
---   let lvl = level env
---   case M.lookup ident (functionLevels env) of
---     Nothing -> return ()
---     Just varLevel ->
---       assertM (varLevel /= lvl) $
---         showPosition pos
---           ++ "function "
---           ++ printTree ident
---           ++ " was already declared at this level"
 
 checkExpressionsEqualType :: A.Expr -> A.Expr -> StmtTEval ()
 checkExpressionsEqualType e1 e2 = do
@@ -593,7 +436,7 @@ typeClassHelp uident classMembers = do
   env <- get
   let cType = DM.fromJust $ M.lookup uident (classes env)
   liftEither $ mapM_ (validateClassAttribute cType env) $ M.keys $ cAttrs cType
-  undefined
+  mapM_ (validateClassMethod cType) $ classMembers
   where
     validateClassAttribute :: ClassType -> Env -> A.UIdent -> Either String ()
     validateClassAttribute cType env attribute = case superClassHasAttribute of
@@ -631,24 +474,6 @@ typeClassHelp uident classMembers = do
           x <- baseClass cType
           getSomethingFromClassOrSuperClasses f x env
     validateClassMethod _ _ = return ()
-
--- data ClassType = ClassType
---   { cAttrs :: M.Map A.UIdent A.Type,
---     cFuncs :: M.Map A.UIdent A.Type,
---     baseClass :: Maybe A.UIdent
---   }
---   deriving (Show)
-
--- data Env = Env
---   { localVariables :: M.Map A.UIdent A.Type,
---     variableLevels :: M.Map A.UIdent Int,
---     functions :: M.Map A.UIdent A.Type,
---     level :: Int,
---     functionRetType :: A.Type,
---     currentClass :: Maybe A.UIdent,
---     classes :: M.Map A.UIdent ClassType
---   }
---   deriving (Show)
 
 getClassName :: A.ClassDef -> A.UIdent
 getClassName (A.ClassDefT _ className _) = className
