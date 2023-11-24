@@ -31,6 +31,7 @@ import qualified Data.Maybe as A
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import qualified Data.Type.Bool as A
+import Debug.Trace
 import qualified Distribution.Simple as A
 import Errors
 import Foreign.C (throwErrno)
@@ -81,10 +82,10 @@ typeOfExpr (A.ELitTrue pos) = return $ A.TBool pos
 typeOfExpr (A.ELitFalse pos) = return $ A.TBool pos
 typeOfExpr (A.EString pos _) = return $ A.TStr pos
 typeOfExpr (A.Not pos e) = do
-  typeOfExpr e >>= checkForType A.TBool pos
+  typeOfExpr e >>= checkForTypeExact A.TBool pos
   return $ A.TBool pos
 typeOfExpr (A.Neg pos e) = do
-  typeOfExpr e >>= checkForType A.TInt pos
+  typeOfExpr e >>= checkForTypeExact A.TInt pos
   return $ A.TInt pos
 typeOfExpr (A.EAnd pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
 typeOfExpr (A.EOr pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
@@ -108,7 +109,8 @@ typeOfExpr (A.ESelf pos) = do
 typeOfExpr (A.ERel pos e1 relOp e2) = do
   t1 <- typeOfExpr e1
   t2 <- typeOfExpr e2
-  assertM (typesEq t1 t2) $ comparingValuesOfDifferentType pos t1 t2
+  env <- ask
+  assertM (equalTypesOrSecondIsSubtype env t1 t2 || equalTypesOrSecondIsSubtype env t2 t1) $ comparingValuesOfDifferentType pos t1 t2
   checkComparable relOp t1
   return $ A.TBool pos
   where
@@ -148,7 +150,11 @@ typeOfExpr (A.EApp pos uident exprs) = do
   env <- ask
   f <- case currentClass env of
     Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
-    Just currClassName -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup uident . cAttrs) currClassName env) (undefinedReferenceMessage uident pos)
+    Just currClassName -> do
+      case getSomethingFromClassOrSuperClasses (M.lookup uident . cAttrs) currClassName env of
+        Just x -> return x
+        Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
+
   handleFunction pos f exprs
 typeOfExpr (A.EMember pos expr member) = do
   env <- ask
@@ -183,7 +189,10 @@ checkArgsCorrectness pos params args = do
   zipWithM_ checkArgCorrectness params args
 
 checkArgCorrectness :: A.Type -> A.Expr -> ExprTEval ()
-checkArgCorrectness param arg = typeOfExpr arg >>= \argType -> assertM (typesEq argType param) (errorMessageWrongType (A.hasPosition arg) argType param)
+checkArgCorrectness param arg = do
+  env <- ask
+  argType <- typeOfExpr arg
+  assertM (equalTypesOrSecondIsSubtype env param argType) (errorMessageWrongType (A.hasPosition arg) argType param)
 
 typeOfBinOp ::
   (A.BNFC'Position -> A.Type) ->
@@ -193,19 +202,19 @@ typeOfBinOp ::
   A.Expr ->
   ExprTEval A.Type
 typeOfBinOp typeConstructor retTypeConstructor pos e1 e2 = do
-  typeOfExpr e1 >>= checkForType typeConstructor (A.hasPosition e1)
-  typeOfExpr e2 >>= checkForType typeConstructor (A.hasPosition e2)
+  typeOfExpr e1 >>= checkForTypeExact typeConstructor (A.hasPosition e1)
+  typeOfExpr e2 >>= checkForTypeExact typeConstructor (A.hasPosition e2)
   return $ retTypeConstructor pos
 
-checkForType ::
+checkForTypeExact ::
   MonadError String m =>
   (A.BNFC'Position -> A.Type) ->
   A.BNFC'Position ->
   A.Type ->
   m ()
-checkForType typeConstructor pos t =
+checkForTypeExact typeConstructor pos t =
   assertM
-    (isType t typeConstructor)
+    (isTypeExact t typeConstructor)
     (errorMessageWrongType pos t $ typeConstructor pos)
 
 checkExpressionIsLValue :: A.Expr -> StmtTEval ()
@@ -222,12 +231,12 @@ incrementBlockLevel env = env {level = (+ 1) $ level env}
 typeStmt :: A.Stmt -> StmtTEval ()
 typeStmt (A.SEmpty _) = return ()
 typeStmt (A.SCond _ expr block) = do
-  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt block
   put env
 typeStmt (A.SCondElse _ expr b1 b2) = do
-  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt b1
   put env >> typeStmt b2
@@ -237,7 +246,7 @@ typeStmt (A.SExp _ expr) = do
   liftEither $ runExprTEval env (typeOfExpr expr)
   return ()
 typeStmt (A.SWhile _ expr stmt) = do
-  checkExpressionType (A.TBool A.BNFC'NoPosition) expr
+  checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt stmt
   put env
@@ -264,11 +273,11 @@ typeStmt (A.SDecl _ t items) = do
           { localVariables = M.insert ident t (localVariables env),
             variableLevels = M.insert ident (level env) (variableLevels env)
           }
-      checkExpressionType itemType expr
+      checkExpressionTypeEqualOrSubType itemType expr
       return ()
 typeStmt (A.SRet _ expr) = do
   env <- get
-  checkExpressionType (functionRetType env) expr
+  checkExpressionTypeEqualExact (functionRetType env) expr
   return ()
 typeStmt (A.SVRet pos) = do
   funcT <- gets functionRetType
@@ -276,19 +285,33 @@ typeStmt (A.SVRet pos) = do
   assertM (typesEq voidType funcT) $ errorMessageWrongType pos voidType funcT
 typeStmt (A.SAss _ lExpr rExpr) = do
   checkExpressionIsLValue lExpr
-  checkExpressionsEqualType lExpr rExpr
+  checkExpressionsEqualTypeOrSecondIsSubType lExpr rExpr
 typeStmt (A.SIncr pos lExpr) = do
   checkExpressionIsLValue lExpr
-  checkExpressionType (A.TInt pos) lExpr
+  checkExpressionTypeEqualExact (A.TInt pos) lExpr
 typeStmt (A.SDecr pos lExpr) = do
   checkExpressionIsLValue lExpr
-  checkExpressionType (A.TInt pos) lExpr
+  checkExpressionTypeEqualExact (A.TInt pos) lExpr
 typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
   env <- get
   put $ incrementBlockLevel env
   mapM_ typeStmt stmts
   put env
   return ()
+
+isTypeExact :: A.Type -> (A.BNFC'Position -> A.Type) -> Bool
+isTypeExact t1 t2 = typesEq t1 $ t2 A.BNFC'NoPosition
+
+isClassOrSuperClass :: Env -> A.UIdent -> A.UIdent -> Bool
+isClassOrSuperClass env className bClassName = case getSomethingFromClassOrSuperClasses hasBaseClassName className env of
+  Just _ -> True
+  _ -> False
+  where
+    hasBaseClassName x = if cName x == bClassName then return (Just ()) else Nothing
+
+equalTypesOrSecondIsSubtype :: Env -> A.Type -> A.Type -> Bool
+equalTypesOrSecondIsSubtype env (A.TClass _ bClassName) (A.TClass _ t) = isClassOrSuperClass env t bClassName
+equalTypesOrSecondIsSubtype _ t1 t2 = typesEq t1 t2
 
 -- Check if variable ident can be declared at the given level.
 checkVariableLevel :: A.BNFC'Position -> A.UIdent -> StmtTEval ()
@@ -319,26 +342,34 @@ checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot 
 checkTypeCorrectUtil pos A.TFun {} = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
 checkTypeCorrectUtil _ _ = return ()
 
-checkExpressionsEqualType :: A.Expr -> A.Expr -> StmtTEval ()
-checkExpressionsEqualType e1 e2 = do
+checkExpressionsEqualTypeOrSecondIsSubType :: A.Expr -> A.Expr -> StmtTEval ()
+checkExpressionsEqualTypeOrSecondIsSubType e1 e2 = do
   env <- get
   expr1Type <- liftEither $ runExprTEval env (typeOfExpr e1)
   expr2Type <- liftEither $ runExprTEval env (typeOfExpr e2)
-  assertM (typesEq expr2Type expr1Type) $
+  assertM (equalTypesOrSecondIsSubtype env expr1Type expr2Type) $
     errorMessageWrongType (A.hasPosition e1) expr2Type expr1Type
   return ()
 
-checkExpressionType :: A.Type -> A.Expr -> StmtTEval ()
-checkExpressionType t expr = do
+checkExpressionTypeEqualExact :: A.Type -> A.Expr -> StmtTEval ()
+checkExpressionTypeEqualExact t expr = do
   env <- get
   exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
   assertM (typesEq exprType t) $
     errorMessageWrongType (A.hasPosition expr) exprType t
   return ()
 
+checkExpressionTypeEqualOrSubType :: A.Type -> A.Expr -> StmtTEval ()
+checkExpressionTypeEqualOrSubType t expr = do
+  env <- get
+  exprType <- liftEither $ runExprTEval env (typeOfExpr expr)
+  assertM (equalTypesOrSecondIsSubtype env t exprType) $
+    errorMessageWrongType (A.hasPosition expr) exprType t
+  return ()
+
 checkIfMainDef :: A.TopDef -> Bool
 checkIfMainDef (A.TopFuncDef _ (A.FunDefT _ retType ident args _)) =
-  ident == A.UIdent "main" && isType retType A.TInt && null args
+  ident == A.UIdent "main" && isTypeExact retType A.TInt && null args
 checkIfMainDef _ = False
 
 getArgType :: A.Arg -> A.Type
@@ -500,6 +531,7 @@ typeClassHelp uident classMembers = do
             env
               { currentClass = Just $ cName cType
               }
+      put envWithAddedClass
       validateMethod retType args block
       put env
       where
