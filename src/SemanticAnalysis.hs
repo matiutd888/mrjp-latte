@@ -277,7 +277,7 @@ typeStmt (A.SDecl _ t items) = do
       return ()
 typeStmt (A.SRet _ expr) = do
   env <- get
-  checkExpressionTypeEqualExact (functionRetType env) expr
+  checkExpressionTypeEqualOrSubType (functionRetType env) expr
   return ()
 typeStmt (A.SVRet pos) = do
   funcT <- gets functionRetType
