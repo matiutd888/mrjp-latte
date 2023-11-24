@@ -77,7 +77,7 @@ run :: Verbosity -> ParseFun Program -> String -> IO String
 run v p s =
   case p ts of
     Left err -> do
-      putStrLn "\nParse              Failed...\n"
+      hPutStrLn stderr "\nParse              Failed...\n"
       putStrV v "Tokens:"
       mapM_ (putStrV v . showPosToken . mkPosToken) ts
       putStrLn err
@@ -91,16 +91,15 @@ run v p s =
     ts = myLexer s
     showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
     getLLFileContent prog = do
-      -- semAnalysisResult <- SA.semanticAnalysis prog
-      -- case semAnalysisResult of
-      --   Left m -> hPutStrLn stderr m >> exitFailure
-      --   Right _ -> do
+      let semAnalysisResult = SA.runSemanticAnalysis prog
+      case semAnalysisResult of
+        Left m -> hPutStrLn stderr "SEMANTIC ANALYSIS ERROR " >> hPutStrLn stderr m >> exitFailure
+        Right _ -> putStrLn "semantic analysis OK" >> return "backend not implemented yet"
 
-      -- llFileContent <- runExceptT $ getLLFile prog
-      -- case llFileContent of
-      --   Left m -> hPutStrLn stderr m >> exitFailure
-      --   Right m -> putStrLn m >> return m
-      return "backend not implemented yet"
+-- llFileContent <- runExceptT $ getLLFile prog
+-- case llFileContent of
+--   Left m -> hPutStrLn stderr m >> exitFailure
+--   Right m -> putStrLn m >> return m
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do
@@ -113,7 +112,7 @@ usage = do
     unlines
       [ "usage: Call with one of the following arguments:",
         "  --help          Display this help message.",
-        "  <file>          Run Latte jvm compiler."
+        "  <file>          Run Latte compiler."
       ]
 
 main :: IO ()

@@ -54,3 +54,47 @@ typesEq _ _ = False
 
 noPos :: A.BNFC'Position
 noPos = A.BNFC'NoPosition
+
+-- Build in functions
+printString :: A.TopDef
+printString =
+  A.TopFuncDef noPos $
+    A.FunDefT
+      noPos
+      (A.TVoid noPos)
+      (A.UIdent "printString")
+      [A.ArgT noPos (A.TStr noPos) (A.UIdent "x")]
+      (A.SBlock noPos [])
+
+printInt :: A.TopDef
+printInt =
+  A.TopFuncDef noPos $
+    A.FunDefT
+      noPos
+      (A.TVoid noPos)
+      (A.UIdent "printInt")
+      [A.ArgT noPos (A.TInt noPos) (A.UIdent "x")]
+      (A.SBlock noPos [])
+
+readInt :: A.TopDef
+readInt =
+  A.TopFuncDef noPos $
+    A.FunDefT
+      noPos
+      (A.TInt noPos)
+      (A.UIdent "readInt")
+      []
+      (A.SBlock noPos [A.SRet noPos (A.ELitInt noPos 0)])
+
+readString :: A.TopDef
+readString =
+  A.TopFuncDef noPos $
+    A.FunDefT
+      noPos
+      (A.TStr noPos)
+      (A.UIdent "readString")
+      []
+      (A.SBlock noPos [A.SRet noPos (A.EString noPos "")])
+
+builtInFunctions :: [TopDef]
+builtInFunctions = [printInt, printString, readInt, readString]

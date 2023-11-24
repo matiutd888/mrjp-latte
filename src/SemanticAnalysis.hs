@@ -35,12 +35,14 @@ import qualified Distribution.Simple as A
 import Errors
 import Foreign.C (throwErrno)
 import GHC.Base (undefined)
+import Grammar.AbsLatte (HasPosition (hasPosition))
 import qualified Grammar.AbsLatte as A
 import qualified Grammar.AbsLatte as E
 import Grammar.PrintLatte
 import System.Posix (blockSignals, dup)
 import System.Posix.Internals (fdType)
 import System.Process (CreateProcess (env))
+import qualified Text.PrettyPrint as A
 import Utils
 import Prelude as P
 
@@ -86,6 +88,12 @@ typeOfExpr (A.Neg pos e) = do
   return $ A.TInt pos
 typeOfExpr (A.EAnd pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
 typeOfExpr (A.EOr pos e1 e2) = typeOfBinOp A.TBool A.TBool pos e1 e2
+typeOfExpr (A.EAdd pos e1 (A.Plus _) e2) = do
+  t <- typeOfExpr e1
+  case t of
+    A.TStr _ -> typeOfBinOp A.TStr A.TStr pos e1 e2
+    A.TInt _ -> typeOfBinOp A.TInt A.TInt pos e1 e2
+    _ -> throwError $ showPosition (A.hasPosition e1) ++ unexpectedTypeMessage t ++ expectedTypeMessage (A.TStr pos) ++ " or " ++ printTree (A.TInt pos)
 typeOfExpr (A.EAdd pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
 typeOfExpr (A.EMul pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
 typeOfExpr (A.ECastNull pos ident) = do
@@ -405,6 +413,7 @@ calculateExprCompileTime _ = Nothing
 
 stmtReturnsValue :: MonadError String m => A.Stmt -> m Bool
 stmtReturnsValue (A.SRet _ _) = return True
+stmtReturnsValue (A.SVRet _) = return True
 stmtReturnsValue (A.SWhile _ expr stmt) = case calculateExprCompileTime expr of
   Just True -> stmtReturnsValue stmt
   _ -> return False
@@ -414,13 +423,17 @@ stmtReturnsValue (A.SCond _ expr stmt) = case calculateExprCompileTime expr of
 stmtReturnsValue (A.SCondElse _ expr stmt1 stmt2) = case calculateExprCompileTime expr of
   Just True -> stmtReturnsValue stmt1
   Just False -> stmtReturnsValue stmt2
-  _ -> return False
+  _ -> do
+    r1 <- stmtReturnsValue stmt1
+    r2 <- stmtReturnsValue stmt2
+    return $ r1 && r2
 stmtReturnsValue (A.SBStmt _ (A.SBlock _ stmts)) =
   mapM stmtReturnsValue stmts <&> or
 stmtReturnsValue _ = return False
 
-checkReturn :: A.Stmt -> StmtTEval ()
-checkReturn stmt = do
+checkReturn :: A.Type -> A.Stmt -> StmtTEval ()
+checkReturn (A.TVoid _) _ = return ()
+checkReturn _ stmt = do
   x <- stmtReturnsValue stmt
   if x
     then return ()
@@ -449,7 +462,7 @@ validateMethod retType args block = do
         level = incrementedLevel
       }
   typeStmt $ A.SBStmt (A.hasPosition block) block
-  checkReturn $ A.SBStmt (A.hasPosition block) block
+  checkReturn retType $ A.SBStmt (A.hasPosition block) block
   put env
 
 typeTopDef :: A.TopDef -> StmtTEval ()
@@ -547,33 +560,11 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
 runStmtTEval :: Env -> StmtTEval a -> Either String (a, Env)
 runStmtTEval env e = runIdentity (runExceptT (runStateT e env))
 
--- Build in functions
-printString :: A.TopDef
-printString =
-  A.TopFuncDef noPos $
-    A.FunDefT
-      noPos
-      (A.TVoid noPos)
-      (A.UIdent "printString")
-      [A.ArgT noPos (A.TStr noPos) (A.UIdent "x")]
-      (A.SBlock noPos [])
-
-printInt :: A.TopDef
-printInt =
-  A.TopFuncDef noPos $
-    A.FunDefT
-      noPos
-      (A.TVoid noPos)
-      (A.UIdent "printInt")
-      [A.ArgT noPos (A.TInt noPos) (A.UIdent "x")]
-      (A.SBlock noPos [])
-
 addFunctions :: Env -> Env
 addFunctions e = snd $ DE.fromRight ((), initEnv) $ runStmtTEval e x
   where
     x = do
-      addTopDefToEnv SemanticAnalysis.printString
-      addTopDefToEnv printInt
+      mapM_ addTopDefToEnv builtInFunctions
 
 initEnv :: Env
 initEnv =

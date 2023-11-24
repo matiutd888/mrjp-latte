@@ -5,9 +5,6 @@ import Grammar.AbsLatte (BNFC'Position)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte
 
-semanticAnalysisError :: String
-semanticAnalysisError = "SEMANTIC ANALYSIS ERROR "
-
 showPosition :: A.BNFC'Position -> String
 showPosition Nothing = "noPos "
 showPosition (Just x) = show x ++ ": "
