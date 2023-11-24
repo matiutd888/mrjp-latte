@@ -571,7 +571,6 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
       case M.lookup ident (cAttrs accClassType) of
         Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
         Nothing -> do
-          -- checkSuperClassForClassField (baseClass accClassType) pos ident
           let newCAttrs = M.insert ident t (cAttrs accClassType)
           return
             accClassType
@@ -582,7 +581,6 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
         Just _ -> throwError $ functionAlreadyDeclaredForThisClass pos ident
         Nothing -> do
           let fType = A.TFun pos retType (P.map getArgType args)
-          -- checkSuperClassForClassMethod (baseClass accClassType) pos ident fType
           let newCFuncs = M.insert ident fType (cFuncs accClassType)
           return
             accClassType
