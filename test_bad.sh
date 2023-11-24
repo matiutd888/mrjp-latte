@@ -24,7 +24,7 @@ test_binary_on_files() {
 
     for file in "$folder"/*.lat; do
         if [ -f "$file" ]; then
-            ./$MY_BINARY "$file" >/dev/null 
+            ./$MY_BINARY "$file" >/dev/null 2>/dev/null
             if [ "$?" -eq "$exit_code" ]; then
                 echo "PASS: $file"
             else
