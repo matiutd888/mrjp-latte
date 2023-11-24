@@ -25,10 +25,12 @@ import qualified Control.Monad.Trans.Accum as M
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
 import qualified Control.Monad.Trans.Maybe as A
 import qualified Data.Either as DE
+import Data.Functor as DF
 import qualified Data.Map as M
 import qualified Data.Maybe as A
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
+import qualified Data.Type.Bool as A
 import qualified Distribution.Simple as A
 import Errors
 import Foreign.C (throwErrno)
@@ -39,7 +41,6 @@ import Grammar.PrintLatte
 import System.Posix (blockSignals, dup)
 import System.Posix.Internals (fdType)
 import System.Process (CreateProcess (env))
-import Text.XHtml (base)
 import Utils
 import Prelude as P
 
@@ -397,8 +398,33 @@ addTopDefToEnv (A.TopClassDef pos classDef) = do
           (classes env)
   put $ env {classes = newClasses}
 
+calculateExprCompileTime :: A.Expr -> Maybe Bool
+calculateExprCompileTime (A.ELitFalse _) = Just False
+calculateExprCompileTime (A.ELitTrue _) = Just True
+calculateExprCompileTime _ = Nothing
+
+stmtReturnsValue :: MonadError String m => A.Stmt -> m Bool
+stmtReturnsValue (A.SRet _ _) = return True
+stmtReturnsValue (A.SWhile _ expr stmt) = case calculateExprCompileTime expr of
+  Just True -> stmtReturnsValue stmt
+  _ -> return False
+stmtReturnsValue (A.SCond _ expr stmt) = case calculateExprCompileTime expr of
+  Just True -> stmtReturnsValue stmt
+  _ -> return False
+stmtReturnsValue (A.SCondElse _ expr stmt1 stmt2) = case calculateExprCompileTime expr of
+  Just True -> stmtReturnsValue stmt1
+  Just False -> stmtReturnsValue stmt2
+  _ -> return False
+stmtReturnsValue (A.SBStmt _ (A.SBlock _ stmts)) =
+  mapM stmtReturnsValue stmts <&> or
+stmtReturnsValue _ = return False
+
 checkReturn :: A.Stmt -> StmtTEval ()
-checkReturn _ = undefined
+checkReturn stmt = do
+  x <- stmtReturnsValue stmt
+  if x
+    then return ()
+    else throwError $ functionDoesntReturnValue $ A.hasPosition stmt
 
 getSomethingFromClassOrSuperClasses :: (ClassType -> Maybe a) -> A.UIdent -> Env -> Maybe a
 getSomethingFromClassOrSuperClasses method className env =

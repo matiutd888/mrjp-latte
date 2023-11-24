@@ -50,6 +50,11 @@ attributeAlreadyDeclaredForThisClassOrSuprclass pos ident =
     ++ printTree ident
     ++ " has already been declared for the superclass of this class"
 
+functionDoesntReturnValue :: A.BNFC'Position -> String
+functionDoesntReturnValue pos =
+  showPosition pos
+    ++ "function might not return a value"
+
 functionAlreadyDeclaredForThisClass :: A.BNFC'Position -> A.UIdent -> String
 functionAlreadyDeclaredForThisClass pos ident =
   showPosition pos
