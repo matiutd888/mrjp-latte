@@ -230,25 +230,26 @@ incrementBlockLevel env = env {level = (+ 1) $ level env}
 
 typeStmt :: A.Stmt -> StmtTEval ()
 typeStmt (A.SEmpty _) = return ()
-typeStmt (A.SCond _ expr block) = do
+typeStmt (A.SCond _ expr stmt) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
-  typeStmt block
+  typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
   put env
 typeStmt (A.SCondElse _ expr b1 b2) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
-  typeStmt b1
-  put env >> typeStmt b2
+  typeStmt $ A.SBStmt (A.hasPosition b1) $ A.SBlock (A.hasPosition b1) [b1]
+  put env
+  typeStmt $ A.SBStmt (A.hasPosition b2) $ A.SBlock (A.hasPosition b2) [b2]
   put env
 typeStmt (A.SExp _ expr) = do
   env <- get
   liftEither $ runExprTEval env (typeOfExpr expr)
   return ()
-typeStmt (A.SWhile _ expr stmt) = do
+typeStmt (A.SWhile pos expr stmt) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
-  typeStmt stmt
+  typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
   put env
 typeStmt (A.SDecl _ t items) = do
   checkTypeCorrectUtil (A.hasPosition t) t
