@@ -8,7 +8,7 @@ import Data.Text.Lazy.Builder
 import Grammar.AbsLatte as A
 import System.Exit (exitFailure)
 import System.FilePath
-import System.IO
+import System.IO (IOMode (WriteMode), hPutStr, withFile)
 
 writeStringToFile :: FilePath -> String -> IO ()
 writeStringToFile filePath content = do
@@ -17,7 +17,7 @@ writeStringToFile filePath content = do
 
 validateFilePath :: FilePath -> IO ()
 -- validateFilePath f = if takeExtension f == ".input" then return () else hPutStrLn stderr "Unexpected extension of the input file; it should be .input" >> exitFailure
-validateFilePath f = return ()
+validateFilePath _ = return ()
 
 composeReaders :: (MonadReader b m) => b -> [m b] -> m b
 composeReaders b [] = return b

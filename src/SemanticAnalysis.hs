@@ -40,9 +40,6 @@ import Grammar.AbsLatte (HasPosition (hasPosition))
 import qualified Grammar.AbsLatte as A
 import qualified Grammar.AbsLatte as E
 import Grammar.PrintLatte
-import System.Posix (blockSignals, dup)
-import System.Posix.Internals (fdType)
-import System.Process (CreateProcess (env))
 import qualified Text.PrettyPrint as A
 import Utils
 import Prelude as P
@@ -115,17 +112,17 @@ typeOfExpr (A.ERel pos e1 relOp e2) = do
   return $ A.TBool pos
   where
     checkComparableEq :: A.Type -> Bool
-    checkComparableEq f@A.TFun {} = False
-    checkComparableEq c@(A.TVoid _) = False
+    checkComparableEq A.TFun {} = False
+    checkComparableEq (A.TVoid _) = False
     checkComparableEq _ = True
 
     checkComparableLe :: A.Type -> Bool
     checkComparableLe (A.TInt _) = True
-    checkComparableLe t = False
+    checkComparableLe _ = False
 
     checkComparableHelp :: A.RelOp -> A.Type -> Bool
-    checkComparableHelp r@(A.EQU _) t = checkComparableEq t
-    checkComparableHelp r@(A.NE _) t = checkComparableEq t
+    checkComparableHelp (A.EQU _) t = checkComparableEq t
+    checkComparableHelp (A.NE _) t = checkComparableEq t
     checkComparableHelp _ t = checkComparableLe t
 
     checkComparable :: A.RelOp -> A.Type -> ExprTEval ()
@@ -135,8 +132,8 @@ typeOfExpr (A.ENewObject pos t) = do
   isValidClass t env
   where
     isValidClass :: MonadError String m => A.Type -> Env -> m A.Type
-    isValidClass t@(A.TClass pos ident) env = maybeToError (M.lookup ident (classes env)) (noClassOfName pos ident) >> return t
-    isValidClass t _ = throwError $ showPosition pos ++ "cannot use new operator with type " ++ printTree t
+    isValidClass (A.TClass ppos ident) env = maybeToError (M.lookup ident (classes env)) (noClassOfName ppos ident) >> return t
+    isValidClass tt _ = throwError $ showPosition pos ++ "cannot use new operator with type " ++ printTree tt
 typeOfExpr (E.EVar pos ident) = do
   -- First  check local environment
   -- Then the classes
@@ -160,13 +157,13 @@ typeOfExpr (A.EMember pos expr member) = do
   env <- ask
   t <- typeOfExpr expr
   case t of
-    A.TClass ppos className -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup member . cAttrs) className env) (undefinedMember pos className member)
+    A.TClass _ className -> maybeToError (getSomethingFromClassOrSuperClasses (M.lookup member . cAttrs) className env) (undefinedMember pos className member)
     _ -> throwError $ showPosition pos ++ "cannot get a member of expression that is not a class"
 typeOfExpr (A.EMemberCall pos expr member exprs) = do
   env <- ask
   t <- typeOfExpr expr
   case t of
-    A.TClass ppos className -> do
+    A.TClass _ className -> do
       f <- maybeToError (getSomethingFromClassOrSuperClasses (M.lookup member . cFuncs) className env) (undefinedMember pos className member)
       handleFunction pos f exprs
     _ -> throwError $ showPosition pos ++ "cannot get a member of expression that is not a class"
@@ -246,7 +243,7 @@ typeStmt (A.SExp _ expr) = do
   env <- get
   liftEither $ runExprTEval env (typeOfExpr expr)
   return ()
-typeStmt (A.SWhile pos expr stmt) = do
+typeStmt (A.SWhile _ expr stmt) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
@@ -407,14 +404,14 @@ checkForCycles graph = foldM_ checkForCyclesHelp S.empty (M.keys graph)
       if S.member currClass previousVisited
         then return (S.union visited previousVisited)
         else case currClassT of
-          (ClassType _ _ (Just baseClass) _ _) -> do
+          (ClassType _ _ (Just bClass) _ _) -> do
             let newVisited = S.insert currClass visited
-            checkForCyclesHelpRec previousVisited newVisited baseClass
+            checkForCyclesHelpRec previousVisited newVisited bClass
           _ -> return (S.union visited previousVisited)
 
 -- This only adds functions to the environment
 addTopDefToEnv :: A.TopDef -> StmtTEval ()
-addTopDefToEnv (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = do
+addTopDefToEnv (A.TopFuncDef _ (A.FunDefT pos retType funName args _)) = do
   env <- get
   when (M.member funName (functions env)) $ throwError $ functionHasAlreadyBeenDeclared pos funName
   let newFunctions =
@@ -498,9 +495,9 @@ validateMethod retType args block = do
   put env
 
 typeTopDef :: A.TopDef -> StmtTEval ()
-typeTopDef (A.TopFuncDef _ (A.FunDefT pos retType funName args block)) = validateMethod retType args block
-typeTopDef (A.TopClassDef pos (A.ClassDefT _ uident classMembers)) = typeClassHelp uident classMembers
-typeTopDef (A.TopClassDef pos (A.ClassExtDefT _ uident _ classMembers)) = typeClassHelp uident classMembers
+typeTopDef (A.TopFuncDef _ (A.FunDefT _ retType _ args block)) = validateMethod retType args block
+typeTopDef (A.TopClassDef _ (A.ClassDefT _ uident classMembers)) = typeClassHelp uident classMembers
+typeTopDef (A.TopClassDef _ (A.ClassExtDefT _ uident _ classMembers)) = typeClassHelp uident classMembers
 
 typeClassHelp :: A.UIdent -> [A.ClassMember] -> StmtTEval ()
 typeClassHelp uident classMembers = do
@@ -538,7 +535,6 @@ typeClassHelp uident classMembers = do
       where
         f :: ClassType -> Maybe A.Type
         f x = do
-          let cFunType = A.TFun pos retType $ P.map getArgType args
           M.lookup name (cFuncs x)
 
         superClassHasMethod :: Env -> Maybe A.Type
@@ -568,7 +564,7 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
   foldM createClassTypeFromClassMembersHelp acc classMembers
   where
     createClassTypeFromClassMembersHelp :: ClassType -> A.ClassMember -> StmtTEval ClassType
-    createClassTypeFromClassMembersHelp accClassType (A.ClassFieldT pos t ident) = do
+    createClassTypeFromClassMembersHelp accClassType (A.ClassFieldT _ t ident) = do
       case M.lookup ident (cAttrs accClassType) of
         Just _ -> throwError $ attributeAlreadyDeclaredForThisClass pos ident
         Nothing -> do
@@ -577,7 +573,7 @@ createClassTypeFromClassMembers pos className bClass classMembers = do
             accClassType
               { cAttrs = newCAttrs
               }
-    createClassTypeFromClassMembersHelp accClassType (A.ClassMethodT pos (A.FunDefT _ retType ident args _)) = do
+    createClassTypeFromClassMembersHelp accClassType (A.ClassMethodT _ (A.FunDefT _ retType ident args _)) = do
       case M.lookup ident (cFuncs accClassType) of
         Just _ -> throwError $ functionAlreadyDeclaredForThisClass pos ident
         Nothing -> do

@@ -21,6 +21,8 @@ test_binary_on_files() {
     local exit_code="$2"
 
     echo "Testing files in $folder..."
+    
+    selected_files=()
 
     for file in "$folder"/*.lat; do
         if [ -f "$file" ]; then
@@ -29,8 +31,15 @@ test_binary_on_files() {
                 echo "PASS: $file"
             else
                 echo "FAIL: $file"
+                selected_files+="$file"
             fi
         fi
+    done
+    echo "##############################################"
+    # Print the selected files
+    echo "Files satisfying the condition:"
+    for selected_file in "${selected_files[@]}"; do
+        echo "$selected_file"
     done
 
     echo ""
