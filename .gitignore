@@ -10,3 +10,4 @@ buildCompiler
 venv
 latc
 **/*.tgz
+*dupa*
