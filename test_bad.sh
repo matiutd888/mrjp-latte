@@ -31,7 +31,7 @@ test_binary_on_files() {
                 echo "PASS: $file"
             else
                 echo "FAIL: $file"
-                selected_files+="$file"
+                selected_files+=("$file")
             fi
         fi
     done

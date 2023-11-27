@@ -9,6 +9,7 @@ import Grammar.AbsLatte as A
 import System.Exit (exitFailure)
 import System.FilePath
 import System.IO (IOMode (WriteMode), hPutStr, withFile)
+import qualified Text.Read as A
 
 writeStringToFile :: FilePath -> String -> IO ()
 writeStringToFile filePath content = do
@@ -93,5 +94,25 @@ readString =
       []
       (A.SBlock noPos [A.SRet noPos (A.EString noPos "")])
 
-builtInFunctions :: [TopDef]
+errorrFun :: A.TopDef
+errorrFun =
+  A.TopFuncDef noPos $
+    A.FunDefT
+      noPos
+      (A.TVoid noPos)
+      (A.UIdent "error")
+      []
+      (A.SBlock noPos [])
+
+builtInFunctions :: [A.TopDef]
 builtInFunctions = [printInt, printString, readInt, readString]
+
+forbiddenIdentifiers :: [A.UIdent]
+forbiddenIdentifiers = map A.UIdent ["self"]
+
+-- forbiddenFuncIdentifiers :: [A.UIdent]
+-- forbiddenFuncIdentifiers = map getFuncName builtInFunctions
+--   where
+--     getFuncName :: A.TopDef -> A.UIdent
+--     getFuncName (A.TopFuncDef _ (A.FunDefT _  _ x _ _)) = x
+--     getFuncName _ = undefined

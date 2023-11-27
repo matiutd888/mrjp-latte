@@ -1,5 +1,8 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use void" #-}
 
 module SemanticAnalysis where
 
@@ -249,13 +252,15 @@ typeStmt (A.SWhile _ expr stmt) = do
   typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
   put env
 typeStmt (A.SDecl _ t items) = do
-  checkTypeCorrectUtil (A.hasPosition t) t
+  env <- get
+  checkTypeCorrectUtil env t
   mapM_ (addItemToEnv t) items
   where
     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
     addItemToEnv itemType (A.SNoInit pos ident) = do
       -- TODO check for shadowing
       env <- get
+      validateIdentifier pos ident
       checkVariableLevel pos ident
       put $
         env
@@ -265,6 +270,7 @@ typeStmt (A.SDecl _ t items) = do
       return ()
     addItemToEnv itemType (A.SInit pos ident expr) = do
       checkVariableLevel pos ident
+      validateIdentifier pos ident
       env <- get
       put $
         env
@@ -273,8 +279,10 @@ typeStmt (A.SDecl _ t items) = do
           }
       checkExpressionTypeEqualOrSubType itemType expr
       return ()
-typeStmt (A.SRet _ expr) = do
+typeStmt (A.SRet pos expr) = do
   env <- get
+  let voidType = A.TVoid pos
+  assertM (not (typesEq voidType (functionRetType env))) (showPosition pos ++ "cannot have return with expression in function of 'void' return type")
   checkExpressionTypeEqualOrSubType (functionRetType env) expr
   return ()
 typeStmt (A.SVRet pos) = do
@@ -296,6 +304,9 @@ typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
   mapM_ typeStmt stmts
   put env
   return ()
+
+validateIdentifier :: MonadError String m => A.BNFC'Position -> A.UIdent -> m ()
+validateIdentifier pos i = assertM (notElem i forbiddenIdentifiers) (showPosition pos ++ "forbidden identifier '" ++ printTree i ++ "'")
 
 isTypeExact :: A.Type -> (A.BNFC'Position -> A.Type) -> Bool
 isTypeExact t1 t2 = typesEq t1 $ t2 A.BNFC'NoPosition
@@ -326,18 +337,10 @@ checkVariableLevel pos ident = do
           ++ " was already declared at this level"
 
 -- Checks if type is a correct class, Int, string or bool
-checkTypeCorrectUtil :: A.BNFC'Position -> A.Type -> StmtTEval ()
-checkTypeCorrectUtil pos (A.TClass _ ident) = do
-  env <- get
-  case M.lookup ident (classes env) of
-    Just _ -> return ()
-    Nothing ->
-      throwError $
-        showPosition pos
-          ++ "cannot find class "
-          ++ printTree ident
-checkTypeCorrectUtil pos (A.TVoid _) = throwError $ showPosition pos ++ "cannot use type 'void' in this place"
-checkTypeCorrectUtil pos A.TFun {} = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
+checkTypeCorrectUtil :: MonadError String m => Env -> A.Type -> m ()
+checkTypeCorrectUtil env (A.TClass pos ident) = maybeToError (M.lookup ident (classes env)) (noClassOfName pos ident) >> return ()
+checkTypeCorrectUtil _ (A.TVoid pos) = throwError $ showPosition pos ++ "cannot use type 'void' in this place"
+checkTypeCorrectUtil _ (A.TFun pos _ _) = throwError $ showPosition pos ++ "cannot use type 'function' in this place"
 checkTypeCorrectUtil _ _ = return ()
 
 checkExpressionsEqualTypeOrSecondIsSubType :: A.Expr -> A.Expr -> StmtTEval ()
@@ -375,6 +378,8 @@ getArgType (A.ArgT _ t _) = t
 
 addArgToEnv :: MonadError String m => Int -> Env -> A.Arg -> m Env
 addArgToEnv newLevel env (A.ArgT pos t ident) = do
+  checkTypeCorrectUtil env t
+  validateIdentifier pos ident
   -- TODO add here a warning if we shadow a variable / class variable
   liftEither $ runStmtTEval env $ checkVariableLevel pos ident
   return
@@ -503,13 +508,15 @@ typeClassHelp :: A.UIdent -> [A.ClassMember] -> StmtTEval ()
 typeClassHelp uident classMembers = do
   env <- get
   let cType = DM.fromJust $ M.lookup uident (classes env)
-  liftEither $ mapM_ (validateClassAttribute cType env) $ M.keys $ cAttrs cType
+  liftEither $ mapM_ (validateClassAttribute cType env) $ M.toList $ cAttrs cType
   mapM_ (validateClassMethod cType) $ classMembers
   where
-    validateClassAttribute :: ClassType -> Env -> A.UIdent -> Either String ()
-    validateClassAttribute cType env attribute = case superClassHasAttribute of
-      Just _ -> throwError $ attributeAlreadyDeclaredForThisClassOrSuprclass (A.hasPosition $ DM.fromJust $ M.lookup attribute $ cAttrs cType) attribute
-      Nothing -> return ()
+    validateClassAttribute :: ClassType -> Env -> (A.UIdent, A.Type) -> Either String ()
+    validateClassAttribute cType env (attribute, attributeType) = do
+      checkTypeCorrectUtil env attributeType
+      case superClassHasAttribute of
+        Just _ -> throwError $ attributeAlreadyDeclaredForThisClassOrSuprclass (A.hasPosition $ DM.fromJust $ M.lookup attribute $ cAttrs cType) attribute
+        Nothing -> return ()
       where
         superClassHasAttribute :: Maybe A.Type
         superClassHasAttribute = do
