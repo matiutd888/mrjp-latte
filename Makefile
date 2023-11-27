@@ -32,7 +32,7 @@ clean:
 
 create_archieve:
 	rm -rf mn418323.tgz
-	tar cf mn418323.tgz --exclude='src/Grammar' src lib Makefile Latte.cf README
+	tar cf mn418323.tgz --exclude='src/Grammar' src lib Makefile Latte.cf
 	mkdir -p testing-archieve
 	rm -rf testing-archieve/*
 	cp mn418323.tgz testing-archieve/

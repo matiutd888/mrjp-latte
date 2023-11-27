@@ -151,7 +151,7 @@ typeOfExpr (A.EApp pos uident exprs) = do
   f <- case currentClass env of
     Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
     Just currClassName -> do
-      case getSomethingFromClassOrSuperClasses (M.lookup uident . cAttrs) currClassName env of
+      case getSomethingFromClassOrSuperClasses (M.lookup uident . cFuncs) currClassName env of
         Just x -> return x
         Nothing -> maybeToError (M.lookup uident (functions env)) (undefinedReferenceMessage uident pos)
 
@@ -219,7 +219,7 @@ checkForTypeExact typeConstructor pos t =
 
 checkExpressionIsLValue :: A.Expr -> StmtTEval ()
 checkExpressionIsLValue (A.EVar _ _) = return ()
-checkExpressionIsLValue A.EMember {} = return ()
+checkExpressionIsLValue (A.EMember _ _ _) = return ()
 checkExpressionIsLValue e = throwError $ errorMessageNotAnLValue (A.hasPosition e) e
 
 -- Statement typechecker

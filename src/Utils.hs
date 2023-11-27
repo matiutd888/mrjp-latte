@@ -105,7 +105,7 @@ errorrFun =
       (A.SBlock noPos [])
 
 builtInFunctions :: [A.TopDef]
-builtInFunctions = [printInt, printString, readInt, readString]
+builtInFunctions = [printInt, printString, readInt, readString, errorrFun]
 
 forbiddenIdentifiers :: [A.UIdent]
 forbiddenIdentifiers = map A.UIdent ["self"]
