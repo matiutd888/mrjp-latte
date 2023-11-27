@@ -1,4 +1,4 @@
-BNFC_COMMAND=bnfc-linux
+BNFC_COMMAND=$(or $(BNFC_HOME),bnfc-linux)
 
 all: Grammar latc
 
