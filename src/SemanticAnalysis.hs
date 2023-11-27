@@ -77,7 +77,7 @@ runExprTEval :: Env -> ExprTEval a -> Either String a
 runExprTEval env e = runIdentity (runExceptT (runReaderT e env))
 
 typeOfExpr :: A.Expr -> ExprTEval A.Type
-typeOfExpr (A.ELitInt pos _) = return $ A.TInt pos
+typeOfExpr (A.ELitInt pos _) = return $ A.TInt pos -- TODO check here for int constant overflow?
 typeOfExpr (A.ELitTrue pos) = return $ A.TBool pos
 typeOfExpr (A.ELitFalse pos) = return $ A.TBool pos
 typeOfExpr (A.EString pos _) = return $ A.TStr pos

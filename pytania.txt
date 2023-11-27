@@ -1,5 +1,0 @@
-int x = 0;
-{
-	inx x = x + 2, y = x;
-}
-^ jaaką wartość ma y???
