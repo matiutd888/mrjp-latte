@@ -7,7 +7,7 @@ import Grammar.PrintLatte
 
 showPosition :: A.BNFC'Position -> String
 showPosition Nothing = "noPos "
-showPosition (Just x) = show x ++ ": "
+showPosition (Just (l, _)) = "line " ++ show l ++ ": "
 
 showPositionOf :: A.HasPosition a => a -> String
 showPositionOf = showPosition . A.hasPosition
