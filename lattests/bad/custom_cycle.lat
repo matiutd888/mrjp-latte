@@ -1,0 +1,12 @@
+class A extends B {
+}
+class AA extends B {
+}
+
+class AB extends AA {
+}
+class B extends AB {
+}
+
+int main() {
+}
