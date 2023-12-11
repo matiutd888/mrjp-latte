@@ -28,6 +28,7 @@ data Env = Env
     eWriter :: LabelWriter
   }
 
+
 initEnv :: M.Map A.UIdent A.Type -> M.Map A.UIdent ClassType -> Env
 initEnv functions classes =
   Env
@@ -39,10 +40,27 @@ initEnv functions classes =
       eWriter = LWriter "" 0
     }
 
+compileFunction :: A.UIdent -> StmtTEval String
+compileFunction = undefined 
+
+compileClass :: A.UIdent -> StmtTEval String
+compileClass = undefined
+
 compileProgram :: A.Program -> StmtTEval String
-compileProgram p = do
-  code <- compileProgramHelp p
-  return $ reverse $ T.unpack $ toLazyText $ codeLines code
+compileProgram p = undefined
+  where
+    compileAndAppendFunction :: String -> A.UIdent -> StmtTEval String
+    compileAndAppendFunction acc fun = do
+      compiledFunCode <- compileFunction fun
+      return $ compiledFunCode ++ acc
+  
+    compileAndAppendClass :: String -> A.UIdent -> StmtTEval String
+    compileAndAppendClass acc fun = do
+      compiledClassCode <- compileClass fun
+      return $ compiledClassCode ++ acc
+
+ code <- compileProgramHelp p
+ return $ reverse $ T.unpack $ toLazyText $ codeLines code
 
 compileProgramHelp :: A.Program -> StmtTEval X86Code
 compileProgramHelp (A.ProgramT _ topdefs) = undefined
