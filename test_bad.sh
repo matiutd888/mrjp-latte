@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MY_BINARY="latc_x86_64"
+MY_BINARY="latc_x86"
 
 default_bad_files_folder="lattests/bad"
 

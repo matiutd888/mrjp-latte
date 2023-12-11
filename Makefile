@@ -1,6 +1,6 @@
 BNFC_COMMAND=$(or $(BNFC_HOME),bnfc-linux)
 
-all: Grammar latc_x86_64
+all: Grammar latc_x86
 
 
 Grammar: src/Grammar/AbsLatte.hs
@@ -19,11 +19,11 @@ src/Grammar/AbsLatte.hs: Latte.cf
 lib/runtime.bc: lib-sources/runtime.ll
 	llvm-asm lib-sources/runtime.ll -o lib/runtime.bc	
 
-latc_x86_64: src/*.hs Grammar
-		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/Grammar/ -isrc/ -outputdir buildCompiler -o latc_x86_64 src/Main.hs
+latc_x86: src/*.hs Grammar
+		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/Grammar/ -isrc/ -outputdir buildCompiler -o latc_x86 src/Main.hs
 
 clean:
-	rm -rf buildCompiler latc_x86_64
+	rm -rf buildCompiler latc_x86
 	rm -rf buildGrammar
 	rm -rf mn418323.tgz
 .PHONY:

@@ -8,7 +8,7 @@ import qualified Data.Text.Lazy as T
 import Data.Text.Lazy.Builder (toLazyText)
 import qualified Grammar.AbsLatte as A
 import Utils
-import Utils64 (X64Code (codeLines))
+import UtilsX86 (X86Code (codeLines))
 
 type Loc = Integer
 
@@ -44,7 +44,7 @@ compileProgram p = do
   code <- compileProgramHelp p
   return $ reverse $ T.unpack $ toLazyText $ codeLines code
 
-compileProgramHelp :: A.Program -> StmtTEval X64Code
+compileProgramHelp :: A.Program -> StmtTEval X86Code
 compileProgramHelp (A.ProgramT _ topdefs) = undefined
 
 runStmtTEval :: Env -> StmtTEval a -> IO (Either String (a, Env))
