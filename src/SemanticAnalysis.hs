@@ -62,15 +62,6 @@ data Env = Env
   }
   deriving (Show)
 
-data ClassType = ClassType
-  { cAttrs :: M.Map A.UIdent A.Type,
-    cFuncs :: M.Map A.UIdent A.Type,
-    baseClass :: Maybe A.UIdent,
-    classPosition :: A.BNFC'Position,
-    cName :: A.UIdent
-  }
-  deriving (Show)
-
 type ExprTEval a = ReaderT Env (ExceptT String Identity) a
 
 runExprTEval :: Env -> ExprTEval a -> Either String a

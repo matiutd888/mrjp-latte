@@ -1,6 +1,11 @@
 module Utils64 where
 
 import Control.Exception
+import Data.Text.Lazy.Builder
+
+data X64Code = X64Code
+  { codeLines :: Builder
+  }
 
 data Asm = Return | Label String | Push String | Mov
 

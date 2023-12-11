@@ -3,6 +3,7 @@
 -- | Program to test parser.
 module Main where
 
+import qualified Compile as C
 import Control.Monad
 import Control.Monad.Except
 import Grammar.AbsLatte (Program)
@@ -17,6 +18,7 @@ import System.Exit (exitFailure)
 import System.FilePath
 import System.IO (hPutStrLn, stderr)
 import System.Process
+import Text.Read (Lexeme (String))
 import Utils
 import Prelude
   ( Either (..),
@@ -48,30 +50,29 @@ type Verbosity = Int
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
-getOutputLLFileFromInputFilePath :: FilePath -> FilePath
-getOutputLLFileFromInputFilePath filePath = dropExtension filePath <.> "output"
+getOutputFileFromInputFilePath :: FilePath -> FilePath
+getOutputFileFromInputFilePath filePath = dropExtension filePath <.> ".s"
 
 runFile :: Verbosity -> ParseFun Program -> FilePath -> IO ()
 runFile v p f = do
   putStrLn f
   validateFilePath f
   programStr <- readFile f
-  -- let outputLLFilePath = getOutputLLFileFromInputFilePath f
-  llvmProgramStr <- run v p programStr
+  let outputFilePath = getOutputFileFromInputFilePath f
+  programStr <- run v p programStr
+  writeStringToFile outputFilePath programStr
+  createBinaryFromGASFile outputFilePath
   return ()
 
--- writeStringToFile outputLLFilePath llvmProgramStr
--- createLLVMBitcode outputLLFilePath
-
-createLLVMBitcode :: FilePath -> IO ()
-createLLVMBitcode llFilePath = do
-  let outputFile = dropExtension llFilePath <.> "bc"
-  let llvmAsCommand = "llvm-as -o " ++ outputFile ++ " " ++ llFilePath
-  (_, _, _, processHandle) <- createProcess (shell llvmAsCommand)
+createBinaryFromGASFile :: FilePath -> IO ()
+createBinaryFromGASFile filePath = do
+  let outputFile = dropExtension filePath
+  let command = "gcc -o " ++ outputFile ++ " " ++ filePath
+  (_, _, _, processHandle) <- createProcess (shell command)
   exitCode <- waitForProcess processHandle
   case exitCode of
-    ExitSuccess -> putStrLn "LLVM bitcode file generated successfully"
-    ExitFailure _ -> hPutStrLn stderr "llvm-as process encountered an error." >> exitFailure
+    ExitSuccess -> putStrLn $ "Executable file generated successfully: " ++ outputFile
+    ExitFailure _ -> hPutStrLn stderr "gcc process encountered an error." >> exitFailure
 
 run :: Verbosity -> ParseFun Program -> String -> IO String
 run v p s =
@@ -90,11 +91,18 @@ run v p s =
   where
     ts = myLexer s
     showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
+    getLLFileContent :: Program -> IO String
     getLLFileContent prog = do
       let semAnalysisResult = SA.runSemanticAnalysis prog
       case semAnalysisResult of
         Left m -> hPutStrLn stderr "SEMANTIC ANALYSIS ERROR " >> hPutStrLn stderr m >> exitFailure
-        Right _ -> putStrLn "semantic analysis OK" >> return "backend not implemented yet"
+        Right (_, env) -> do
+          let f = SA.functions env
+          let c = SA.classes env
+          compilationResult <- C.runCompileProgram f c prog
+          case compilationResult of
+            Left m -> hPutStrLn stderr "COMPILING STAGE ERROR " >> hPutStrLn stderr m >> exitFailure
+            Right (s, _) -> return s
 
 -- llFileContent <- runExceptT $ getLLFile prog
 -- case llFileContent of

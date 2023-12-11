@@ -4,12 +4,22 @@ module Utils where
 
 import Control.Monad.Except
 import Control.Monad.Reader
+import qualified Data.Map as M
 import Data.Text.Lazy.Builder
 import Grammar.AbsLatte as A
 import System.Exit (exitFailure)
 import System.FilePath
 import System.IO (IOMode (WriteMode), hPutStr, withFile)
 import qualified Text.Read as A
+
+data ClassType = ClassType
+  { cAttrs :: M.Map A.UIdent A.Type,
+    cFuncs :: M.Map A.UIdent A.Type,
+    baseClass :: Maybe A.UIdent,
+    classPosition :: A.BNFC'Position,
+    cName :: A.UIdent
+  }
+  deriving (Show)
 
 writeStringToFile :: FilePath -> String -> IO ()
 writeStringToFile filePath content = do
