@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MY_BINARY="latc"
+MY_BINARY="latc_x86_64"
 
 default_good_files_folder="lattests/good"
 

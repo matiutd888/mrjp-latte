@@ -8,6 +8,6 @@ build
 buildGrammar
 buildCompiler
 venv
-latc
+latc_x86_64
 **/*.tgz
 *dupa*
