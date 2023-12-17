@@ -16,12 +16,7 @@ version:            0.1.0.0
 author:             Mateusz
 maintainer:         matiutd888@gmail.com
 
--- A copyright notice.
--- copyright:
--- category:
-extra-source-files: CHANGELOG.md
-
-executable latte_x86
+executable latc_x86
     main-is:          Main.hs
 
     other-modules:

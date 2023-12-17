@@ -16,16 +16,16 @@ src/Grammar/AbsLatte.hs: Latte.cf
 	cp buildGrammar/Grammar/*.hs src/Grammar/
 	rm -rf src/Grammar/TestLatte.hs
 
-lib/runtime.bc: lib-sources/runtime.ll
-	llvm-asm lib-sources/runtime.ll -o lib/runtime.bc	
-
 latc_x86: src/*.hs Grammar
-		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/Grammar/ -isrc/ -outputdir buildCompiler -o latc_x86 src/Main.hs
+#		ghc -Wall -Wno-unused-do-bind -Wno-unused-imports -isrc/Grammar/ -isrc/ -outputdir buildCompiler -o latc_x86 src/Main.hs
+		cabal build
+		ln -sf $$(cabal exec which latc_x86) latc_x86
 
 clean:
 	rm -rf buildCompiler latc_x86
 	rm -rf buildGrammar
 	rm -rf mn418323.tgz
+	cabal clean
 .PHONY:
 	clean
 	Grammar
