@@ -1,0 +1,53 @@
+cabal-version:      2.4
+name:               mrjp-latte
+version:            0.1.0.0
+
+-- A short (one-line) description of the package.
+-- synopsis:
+
+-- A longer description of the package.
+-- description:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+
+-- The license under which the package is released.
+-- license:
+author:             Mateusz
+maintainer:         matiutd888@gmail.com
+
+-- A copyright notice.
+-- copyright:
+-- category:
+extra-source-files: CHANGELOG.md
+
+executable latte_x86
+    main-is:          Main.hs
+
+    other-modules:
+        Grammar.AbsLatte,
+        Compile,
+        Errors,
+        Grammar.LexLatte,
+        Grammar.ParLatte,
+        Grammar.PrintLatte,
+        Grammar.SkelLatte,
+        SemanticAnalysis,
+        Utils,
+        UtilsX86
+
+        
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base ^>=4.14.3.0,
+                      dlist,
+                      array,
+                      containers,
+                      mtl,
+                      filepath,
+                      text,
+                      transformers,
+                      process
+    hs-source-dirs:   src, src/Grammar
+    default-language: Haskell2010

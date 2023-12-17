@@ -33,9 +33,7 @@ import qualified Data.Map as M
 import qualified Data.Maybe as A
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
-import qualified Data.Type.Bool as A
 import Debug.Trace
-import qualified Distribution.Simple as A
 import Errors
 import Foreign.C (throwErrno)
 import GHC.Base (undefined)
@@ -43,7 +41,6 @@ import Grammar.AbsLatte (HasPosition (hasPosition))
 import qualified Grammar.AbsLatte as A
 import qualified Grammar.AbsLatte as E
 import Grammar.PrintLatte
-import qualified Text.PrettyPrint as A
 import Utils
 import Prelude as P
 
