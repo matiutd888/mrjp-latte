@@ -11,3 +11,5 @@ venv
 latc_x86
 **/*.tgz
 *dupa*
+lattest*
+dist-newstyle
