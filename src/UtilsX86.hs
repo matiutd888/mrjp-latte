@@ -52,6 +52,12 @@ bytesOfInt = 4
 
 --
 
+instrToCode :: [Asm] -> X86Code
+instrToCode x =
+  X86Code
+    { codeLines = DList.fromList x
+    }
+
 returnAddressOffset :: Int
 returnAddressOffset = 4
 

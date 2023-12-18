@@ -5,6 +5,7 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
+import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import qualified Data.Map as M
 import qualified Data.Maybe as DM
@@ -29,6 +30,9 @@ data LabelWriter = LWriter
     lClassName :: String,
     lCounter :: Int
   }
+
+labelReturn :: LabelWriter -> String
+labelReturn (LWriter f c _) = c ++ "$" ++ f ++ "return"
 
 data Env = Env
   { eCurrClass :: Maybe A.UIdent,
@@ -180,7 +184,7 @@ compileFunction name idents body = do
             eVarTypes = funLocalTypes
           }
   code <- generateCode (A.SBStmt noPos body)
-  return $ funEpilogue <> code <> funPrologue
+  return $ funEpilogue <> U.instrToCode [U.Label (labelReturn funLabelWriter)] <> code <> funPrologue
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined
