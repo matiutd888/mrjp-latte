@@ -1,15 +1,36 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use newtype instead of data" #-}
 module UtilsX86 where
 
 import Control.Exception
+import Data.DList (DList)
+import qualified Data.DList as DList
 import Data.Text.Lazy.Builder
+import qualified Grammar.AbsLatte as A
 
-data X86Code = X64Code
-  { codeLines :: Builder
+data X86Code = X86Code
+  { codeLines :: DList.DList Asm
   }
 
-data Asm = Return | Label String | Push String | Mov
+-- Make CustomData an instance of Semigroup
+instance Semigroup X86Code where
+  (<>) (X86Code x) (X86Code y) = mappend (X86Code x) (X86Code y)
+
+-- Make CustomData an instance of Monoid
+instance Monoid X86Code where
+  -- mempty represents the empty value for your type
+  mempty :: X86Code
+  mempty = X86Code $ DList.fromList []
+
+-- Intel syntax
+data Asm = Return | Label String | Push Register | Mov Register Register | Sub Register Register | Pop Register
 
 type Register = String
+
+bytesOfInt :: Int
+bytesOfInt = 4
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -30,6 +51,14 @@ type Register = String
 --       | otherwise = undefined
 
 --
+
+returnAddressOffset :: Int
+returnAddressOffset = 4
+
+sizeOfTypeBytes :: A.Type -> Int
+sizeOfTypeBytes (A.TBool _) = 1
+sizeOfTypeBytes _ = 4
+
 registersStandard :: [Register]
 registersStandard = ["eax", "edx", "ebx", "ecx", "esi", "edi"]
 
