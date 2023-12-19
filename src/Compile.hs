@@ -7,6 +7,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
+import qualified Data.DList as U
 import qualified Data.Map as M
 import qualified Data.Maybe as DM
 import qualified Data.Text.Lazy as T
@@ -56,29 +57,42 @@ initEnv functions classes =
       eLocalVarsBytesCounter = 0
     }
 
+getTmpRegister :: StmtTEval U.Register
+getTmpRegister = return "ecx"
+
+getTwoTmpRegisters :: StmtTEval (U.Register, U.Register)
+getTwoTmpRegisters = return ("ecx", "edi")
+
+-- moveStackToRegister :: U.Register -> U.X86Code
+-- moveStackToRegister reg =
+--   U.instrsToCode
+--     [ U.Mov (U.Reg reg) (U.SimpleMem U.stackRegister 0)
+--     ]
+
+-- moveStackToLocationRelativeToFR :: Int -> StmtTEval U.X86Code
+-- moveStackToLocationRelativeToFR offsetRelativeToFR = do
+--   tmpReg <- getTmpRegister
+--   return $
+--     U.instrsToCode $
+--       [ U.Mov (U.Reg tmpReg) (U.SimpleMem U.stackRegister 0),
+--         U.Mov (U.SimpleMem U.frameRegister offsetRelativeToFR) (U.Reg tmpReg)
+--       ]
+
 prologue :: Int -> U.X86Code
 prologue bytesForLocals =
-  U.X86Code
-    { U.codeLines =
-        DList.DList.fromList $
-          reverse
-            [ U.Push U.frameRegister,
-              U.Mov U.frameRegister U.stackRegister,
-              U.Sub U.stackRegister $ show bytesForLocals
-            ]
-    }
+  U.instrsToCode
+    [ U.Push $ U.Reg U.frameRegister,
+      U.Mov (U.Reg U.frameRegister) (U.Reg U.stackRegister),
+      U.Sub (U.Reg U.stackRegister) $ U.Constant (show bytesForLocals)
+    ]
 
 epilogue :: U.X86Code
 epilogue =
-  U.X86Code
-    { codeLines =
-        DList.DList.fromList $
-          reverse
-            [ U.Mov U.stackRegister U.frameRegister,
-              U.Pop U.frameRegister,
-              U.Return
-            ]
-    }
+  U.instrsToCode
+    [ U.Mov (U.Reg U.stackRegister) (U.Reg U.frameRegister),
+      U.Pop (U.Reg U.frameRegister),
+      U.Return
+    ]
 
 runExprTEval :: Env -> ExprTEval a -> IO (Either String a)
 runExprTEval env e = runExceptT (runReaderT e env)
@@ -156,7 +170,39 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
     handleItem (A.SNoInit _ ident) = handleDecl ident >> return mempty
     handleItem (A.SInit _ ident expr) = do
       handleDecl ident
-      liftExprTEval (evalExpr expr)
+      exprCode <- liftExprTEval (evalExpr expr)
+      env <- get
+      let moveValueToLocationCode = U.instrToCode $ U.Pop $ U.SimpleMem U.frameRegister (eVarLocs env M.! ident)
+      return $ moveValueToLocationCode <> exprCode
+-- instrToCode (U.Mov [], ) $ <> code
+generateCode (A.SRet _ e) = do
+  exprCode <- liftExprTEval (evalExpr e)
+  let popResult = U.instrToCode $ U.Pop $ U.Reg U.resultRegister
+  lWriter <- gets eWriter
+
+  let lReturn = labelReturn lWriter
+  let jumpToEpilogue = U.instrToCode $ U.Label lReturn
+  return $ jumpToEpilogue <> popResult <> exprCode
+generateCode (A.SVRet _) = do
+  lWriter <- gets eWriter
+  let lReturn = labelReturn lWriter
+  return $ U.instrToCode $ U.Label lReturn
+generateCode (A.SAss _ e1 e2) = do
+  getLValueAddressCode <- getLValueFromExpression e1
+  exprCode <- liftExprTEval (evalExpr e2)
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
+  return $ movValueToLocation <> popValuesToTmpRegisters <> exprCode <> getLValueAddressCode
+  where
+    getLValueFromExpression :: A.Expr -> StmtTEval U.X86Code
+    getLValueFromExpression (A.EVar _ ident) = do
+      m <- gets eVarLocs
+      let loc = m M.! ident
+      tmp1 <- getTmpRegister
+      let retCode = U.instrsToCode [U.Mov (U.Reg tmp1) (U.Reg U.frameRegister), U.Add (U.Reg tmp1) (U.Constant $ show loc), U.Push $ U.Reg tmp1]
+      return retCode
+    getLValueFromExpression _ = undefined
 generateCode _ = undefined
 
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
@@ -184,7 +230,7 @@ compileFunction name idents body = do
             eVarTypes = funLocalTypes
           }
   code <- generateCode (A.SBStmt noPos body)
-  return $ funEpilogue <> U.instrToCode [U.Label (labelReturn funLabelWriter)] <> code <> funPrologue
+  return $ funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined

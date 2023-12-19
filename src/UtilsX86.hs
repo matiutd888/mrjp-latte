@@ -14,21 +14,20 @@ data X86Code = X86Code
   { codeLines :: DList.DList Asm
   }
 
--- Make CustomData an instance of Semigroup
 instance Semigroup X86Code where
   (<>) :: X86Code -> X86Code -> X86Code
   (<>) (X86Code x) (X86Code y) = mappend (X86Code x) (X86Code y)
 
--- Make CustomData an instance of Monoid
 instance Monoid X86Code where
-  -- mempty represents the empty value for your type
   mempty :: X86Code
   mempty = X86Code $ DList.fromList []
 
 -- Intel syntax
-data Asm = Return | Label String | Push Register | Mov Register Register | Sub Register Register | Pop Register
+data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand
 
 type Register = String
+
+data Operand = Reg Register | SimpleMem Register Int | Constant String
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -50,17 +49,21 @@ type Register = String
 
 --
 
-instrToCode :: [Asm] -> X86Code
-instrToCode x =
+instrToCode :: Asm -> X86Code
+instrToCode = instrsToCode . (: [])
+
+instrsToCode :: [Asm] -> X86Code
+instrsToCode x =
   X86Code
-    { codeLines = DList.fromList x
+    { codeLines = DList.fromList $ reverse x
     }
 
 returnAddressOffset :: Int
 returnAddressOffset = 4
 
+-- TODO change size of bools to 1
 sizeOfTypeBytes :: A.Type -> Int
-sizeOfTypeBytes (A.TBool _) = 1
+sizeOfTypeBytes (A.TBool _) = 4
 sizeOfTypeBytes _ = 4
 
 registersStandard :: [Register]
@@ -71,6 +74,9 @@ stackRegister = "esp"
 
 frameRegister :: Register
 frameRegister = "ebp"
+
+resultRegister :: Register
+resultRegister = "eax"
 
 registersAll :: [Register]
 registersAll = stackRegister : frameRegister : registersStandard
