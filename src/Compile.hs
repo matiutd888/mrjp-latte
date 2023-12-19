@@ -192,23 +192,39 @@ generateCode (A.SVRet _) = do
   let lReturn = labelReturn lWriter
   return $ U.instrToCode $ U.Label lReturn
 generateCode (A.SAss _ e1 e2) = do
-  getLValueAddressCode <- getLValueFromExpression e1
+  putOnStack <- getLValueAddressOnStack e1
   exprCode <- liftExprTEval (evalExpr e2)
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
-  return $ movValueToLocation <> popValuesToTmpRegisters <> exprCode <> getLValueAddressCode
-  where
-    getLValueFromExpression :: A.Expr -> StmtTEval U.X86Code
-    getLValueFromExpression (A.EVar _ ident) = do
-      m <- gets eVarLocs
-      let loc = m M.! ident
-      tmp <- getTmpRegister
-      moveToRegister <- moveLocalVariableAddressToRegister loc tmp
-      let retCode = U.instrsToCode [U.Push $ U.Reg tmp]
-      return $ retCode <> moveToRegister
-    getLValueFromExpression _ = undefined
+  return $ movValueToLocation <> popValuesToTmpRegisters <> exprCode <> putOnStack
+generateCode (A.SIncr _ e) = do
+  putOnStack <- getLValueAddressOnStack e
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popAddressToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let movValueToRegister = U.instrsToCode [U.Mov (U.Reg tmp2) (U.SimpleMem tmp1 0)]
+  let incrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant $ show 1)]
+  let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
+  return $ movValueToLocation <> incrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
+generateCode (A.SDecr _ e) = do
+  putOnStack <- getLValueAddressOnStack e
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popAddressToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let movValueToRegister = U.instrsToCode [U.Mov (U.Reg tmp2) (U.SimpleMem tmp1 0)]
+  let decrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant $ show (-1))]
+  let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
+  return $ movValueToLocation <> decrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode _ = undefined
+
+getLValueAddressOnStack :: A.Expr -> StmtTEval U.X86Code
+getLValueAddressOnStack (A.EVar _ ident) = do
+  m <- gets eVarLocs
+  let loc = m M.! ident
+  tmp <- getTmpRegister
+  moveToRegister <- moveLocalVariableAddressToRegister loc tmp
+  let pushAddress = U.instrsToCode [U.Push $ U.Reg tmp]
+  return $ pushAddress <> moveToRegister
+getLValueAddressOnStack _ = undefined
 
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunction name idents body = do
