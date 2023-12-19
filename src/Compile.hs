@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Compile where
 
 import qualified Control.Applicative as DM
@@ -15,7 +17,6 @@ import Data.Text.Lazy.Builder (toLazyText)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
-import System.Process (CreateProcess (env))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -114,13 +115,13 @@ getNumberOfBytesForLocals = fst . getNumberOfBytesForLocalsHelper 0 0
   where
     getNumberOfBytesForLocalsHelper :: Int -> Int -> A.Stmt -> (Int, Int)
     getNumberOfBytesForLocalsHelper currMax currDecl (A.SBStmt _ (A.SBlock _ stmts)) =
-      let (resMax, resDeclCtr) = foldl (uncurry getNumberOfBytesForLocalsHelper) (currMax, currDecl) stmts
+      let (resMax, _resDeclCtr) = foldl (uncurry getNumberOfBytesForLocalsHelper) (currMax, currDecl) stmts
        in (resMax, currDecl)
     getNumberOfBytesForLocalsHelper currMax currDecl (A.SDecl _ t items) =
       let bytes = U.sizeOfTypeBytes t
        in let newCurr = currDecl + bytes * length items
            in (max currMax newCurr, newCurr)
-    getNumberOfBytesForLocalsHelper currMax currDecl (A.SCond _ _ s) = let (newMax, newDecl) = getNumberOfBytesForLocalsHelper currMax currDecl s in (newMax, currDecl)
+    getNumberOfBytesForLocalsHelper currMax currDecl (A.SCond _ _ s) = let (newMax, _newDecl) = getNumberOfBytesForLocalsHelper currMax currDecl s in (newMax, currDecl)
     getNumberOfBytesForLocalsHelper currMax currDecl (A.SCondElse _ _ s1 s2) =
       let res = map (getNumberOfBytesForLocalsHelper currMax currDecl) [s1, s2]
        in (maximum (map fst res), currDecl)
@@ -178,7 +179,6 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
       env <- get
       let moveValueToLocationCode = U.instrToCode $ U.Pop $ U.SimpleMem U.frameRegister (eVarLocs env M.! ident)
       return $ moveValueToLocationCode <> exprCode
--- instrToCode (U.Mov [], ) $ <> code
 generateCode (A.SRet _ e) = do
   exprCode <- liftExprTEval (evalExpr e)
   let popResult = U.instrToCode $ U.Pop $ U.Reg U.resultRegister
@@ -229,7 +229,7 @@ getLValueAddressOnStack _ = undefined
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunction name idents body = do
   env <- get
-  let (A.TFun _ retType argTypes) = eFunctions env M.! name
+  let (A.TFun _ _retType argTypes) = eFunctions env M.! name
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
   let funPrologue = prologue numberOfBytesForLocals
   let funEpilogue = epilogue
@@ -250,18 +250,20 @@ compileFunction name idents body = do
             eLocalVarsBytesCounter = funLocalVarsBytesCounter,
             eVarTypes = funLocalTypes
           }
+  put newEnv
   code <- generateCode (A.SBStmt noPos body)
+  put env
   return $ funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined
 
 compileTopDef :: A.TopDef -> StmtTEval String
-compileTopDef (A.TopFuncDef _ (A.FunDefT _ retType uident args block)) = undefined
+compileTopDef (A.TopFuncDef _ (A.FunDefT _ _retType _uident _args _block)) = undefined
 compileTopDef _ = undefined
 
 compileProgram :: A.Program -> StmtTEval String
-compileProgram p = undefined
+compileProgram _ = undefined
 
 -- where
 --   compileAndAppendFunction :: String -> A.UIdent -> StmtTEval String

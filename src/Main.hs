@@ -59,8 +59,8 @@ runFile v p f = do
   validateFilePath f
   programStr <- readFile f
   let outputFilePath = getOutputFileFromInputFilePath f
-  programStr <- run v p programStr
-  writeStringToFile outputFilePath programStr
+  programCodeStr <- run v p programStr
+  writeStringToFile outputFilePath programCodeStr
   createBinaryFromGASFile outputFilePath
   return ()
 
@@ -96,13 +96,13 @@ run v p s =
       let semAnalysisResult = SA.runSemanticAnalysis prog
       case semAnalysisResult of
         Left m -> hPutStrLn stderr "SEMANTIC ANALYSIS ERROR " >> hPutStrLn stderr m >> exitFailure
-        Right (_, env) -> do
-          let f = SA.functions env
-          let c = SA.classes env
+        Right (_, environment) -> do
+          let f = SA.functions environment
+          let c = SA.classes environment
           compilationResult <- C.runCompileProgram f c prog
           case compilationResult of
             Left m -> hPutStrLn stderr "COMPILING STAGE ERROR " >> hPutStrLn stderr m >> exitFailure
-            Right (s, _) -> return s
+            Right (pStr, _) -> return pStr
 
 -- llFileContent <- runExceptT $ getLLFile prog
 -- case llFileContent of

@@ -1,6 +1,6 @@
-cabal-version:      2.4
-name:               mrjp-latte
-version:            0.1.0.0
+cabal-version: 2.4
+name:          mrjp-latte
+version:       0.1.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -13,37 +13,36 @@ version:            0.1.0.0
 
 -- The license under which the package is released.
 -- license:
-author:             Mateusz
-maintainer:         matiutd888@gmail.com
+author:        Mateusz
+maintainer:    matiutd888@gmail.com
 
 executable latc_x86
-    main-is:          Main.hs
+  main-is:          Main.hs
+  other-modules:
+    Compile
+    Errors
+    Grammar.AbsLatte
+    Grammar.LexLatte
+    Grammar.ParLatte
+    Grammar.PrintLatte
+    Grammar.SkelLatte
+    SemanticAnalysis
+    Utils
+    UtilsX86
 
-    other-modules:
-        Grammar.AbsLatte,
-        Compile,
-        Errors,
-        Grammar.LexLatte,
-        Grammar.ParLatte,
-        Grammar.PrintLatte,
-        Grammar.SkelLatte,
-        SemanticAnalysis,
-        Utils,
-        UtilsX86
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
+  build-depends:
+    , array
+    , base          ^>=4.14.3.0
+    , containers
+    , dlist
+    , filepath
+    , mtl
+    , process
+    , text
+    , transformers
 
-        
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:    base ^>=4.14.3.0,
-                      dlist,
-                      array,
-                      containers,
-                      mtl,
-                      filepath,
-                      text,
-                      transformers,
-                      process
-    hs-source-dirs:   src, src/Grammar
-    default-language: Haskell2010
-    ghc-options: -Wall -Wno-unused-do-bind -Wno-unused-imports
+  hs-source-dirs:   src src/Grammar
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wno-unused-do-bind -Wno-unused-imports
