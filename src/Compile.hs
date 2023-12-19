@@ -63,6 +63,10 @@ getTmpRegister = return "ecx"
 getTwoTmpRegisters :: StmtTEval (U.Register, U.Register)
 getTwoTmpRegisters = return ("ecx", "edi")
 
+moveLocalVariableAddressToRegister :: Int -> U.Register -> StmtTEval U.X86Code
+moveLocalVariableAddressToRegister offsetRelativeToFR reg = do
+  return $ U.instrsToCode [U.Mov (U.Reg reg) (U.Reg U.frameRegister), U.Add (U.Reg reg) (U.Constant $ show offsetRelativeToFR)]
+
 -- moveStackToRegister :: U.Register -> U.X86Code
 -- moveStackToRegister reg =
 --   U.instrsToCode
@@ -199,9 +203,10 @@ generateCode (A.SAss _ e1 e2) = do
     getLValueFromExpression (A.EVar _ ident) = do
       m <- gets eVarLocs
       let loc = m M.! ident
-      tmp1 <- getTmpRegister
-      let retCode = U.instrsToCode [U.Mov (U.Reg tmp1) (U.Reg U.frameRegister), U.Add (U.Reg tmp1) (U.Constant $ show loc), U.Push $ U.Reg tmp1]
-      return retCode
+      tmp <- getTmpRegister
+      moveToRegister <- moveLocalVariableAddressToRegister loc tmp
+      let retCode = U.instrsToCode [U.Push $ U.Reg tmp]
+      return $ retCode <> moveToRegister
     getLValueFromExpression _ = undefined
 generateCode _ = undefined
 
