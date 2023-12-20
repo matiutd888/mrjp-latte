@@ -105,3 +105,6 @@ expectedTypeMessage t = "expected type " ++ printTree t
 
 unexpectedTypeMessage :: A.Type -> String
 unexpectedTypeMessage t = "unexpected type " ++ printTree t
+
+declarationNotAllowed :: BNFC'Position -> String
+declarationNotAllowed pos = showPosition pos ++ "declaration in this place is not allowed"

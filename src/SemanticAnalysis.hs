@@ -221,14 +221,17 @@ typeStmt (A.SEmpty _) = return ()
 typeStmt (A.SCond _ expr stmt) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
+  assertM (not $ isStatementDecl stmt) $ declarationNotAllowed $ hasPosition stmt
   typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
   put env
-typeStmt (A.SCondElse _ expr b1 b2) = do
+typeStmt (A.SCondElse _ expr s1 s2) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
-  typeStmt $ A.SBStmt (A.hasPosition b1) $ A.SBlock (A.hasPosition b1) [b1]
+  assertM (not $ isStatementDecl s1) $ declarationNotAllowed $ hasPosition s1
+  typeStmt $ A.SBStmt (A.hasPosition s1) $ A.SBlock (A.hasPosition s1) [s1]
   put env
-  typeStmt $ A.SBStmt (A.hasPosition b2) $ A.SBlock (A.hasPosition b2) [b2]
+  assertM (not $ isStatementDecl s2) $ declarationNotAllowed $ hasPosition s2
+  typeStmt $ A.SBStmt (A.hasPosition s2) $ A.SBlock (A.hasPosition s2) [s2]
   put env
 typeStmt (A.SExp _ expr) = do
   env <- get
@@ -238,6 +241,7 @@ typeStmt (A.SWhile _ expr stmt) = do
   checkExpressionTypeEqualExact (A.TBool A.BNFC'NoPosition) expr
   env <- get
   typeStmt $ A.SBStmt (A.hasPosition stmt) $ A.SBlock (A.hasPosition stmt) [stmt]
+  assertM (not $ isStatementDecl stmt) $ declarationNotAllowed $ hasPosition stmt
   put env
 typeStmt (A.SDecl _ t items) = do
   env <- get
@@ -293,8 +297,12 @@ typeStmt (A.SBStmt _ (A.SBlock _ stmts)) = do
   put env
   return ()
 
+isStatementDecl :: A.Stmt -> Bool
+isStatementDecl A.SDecl {} = True
+isStatementDecl _ = False
+
 validateIdentifier :: MonadError String m => A.BNFC'Position -> A.UIdent -> m ()
-validateIdentifier pos i = assertM (notElem i forbiddenIdentifiers) (showPosition pos ++ "forbidden identifier '" ++ printTree i ++ "'")
+validateIdentifier pos i = assertM (i `notElem` forbiddenIdentifiers) (showPosition pos ++ "forbidden identifier '" ++ printTree i ++ "'")
 
 isTypeExact :: A.Type -> (A.BNFC'Position -> A.Type) -> Bool
 isTypeExact t1 t2 = typesEq t1 $ t2 A.BNFC'NoPosition
