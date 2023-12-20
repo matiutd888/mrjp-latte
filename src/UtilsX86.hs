@@ -23,7 +23,7 @@ instance Monoid X86Code where
   mempty = X86Code $ DList.fromList []
 
 -- Intel syntax
-data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand | Cmp Operand Operand | Je String
+data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand | Cmp Operand Operand | Je String | Jmp String
 
 type Register = String
 
@@ -48,6 +48,9 @@ data Operand = Reg Register | SimpleMem Register Int | Constant String
 --       | otherwise = undefined
 
 --
+
+popToNothing :: X86Code
+popToNothing = instrsToCode [Add (Reg stackRegister) (Constant "4")]
 
 instrToCode :: Asm -> X86Code
 instrToCode = instrsToCode . (: [])

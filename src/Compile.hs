@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import qualified Data.Maybe as DM
 import qualified Data.Text.Lazy as T
 import Data.Text.Lazy.Builder (toLazyText)
+import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
@@ -37,11 +38,11 @@ data LabelWriter = LWriter
 labelReturn :: LabelWriter -> String
 labelReturn (LWriter f c _) = c ++ "$" ++ f ++ "return"
 
-getNewLabel :: StmtTEval String
-getNewLabel = do
+getNewLabel :: String -> StmtTEval String
+getNewLabel hint = do
   env <- get
   let lw = eWriter env
-  let ret = getLabel lw
+  let ret = getLabel lw hint
   put $
     env
       { eWriter = advanceLabel lw
@@ -54,8 +55,8 @@ getNewLabel = do
         { lCounter = lCounter l + 1
         }
 
-    getLabel :: LabelWriter -> String
-    getLabel l = lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l)
+    getLabel :: LabelWriter -> String -> String
+    getLabel l customHint = lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l) ++ "$" ++ customHint
 
 data Env = Env
   { eCurrClass :: Maybe A.UIdent,
@@ -169,7 +170,8 @@ generateCode (A.SBStmt _ (A.SBlock _ stmts)) = do
   put $
     newEnv
       { eVarLocs = eVarLocs env,
-        eVarTypes = eVarTypes env
+        eVarTypes = eVarTypes env,
+        eLocalVarsBytesCounter = eLocalVarsBytesCounter env
       }
   return code
 generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
@@ -204,7 +206,6 @@ generateCode (A.SRet _ e) = do
   exprCode <- liftExprTEval (evalExpr e)
   let popResult = U.instrToCode $ U.Pop $ U.Reg U.resultRegister
   lWriter <- gets eWriter
-
   let lReturn = labelReturn lWriter
   let jumpToEpilogue = U.instrToCode $ U.Label lReturn
   return $ jumpToEpilogue <> popResult <> exprCode
@@ -236,16 +237,46 @@ generateCode (A.SDecr _ e) = do
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
   return $ movValueToLocation <> decrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode (A.SCond _ e s) = do
+  skipStatementLabel <- getNewLabel "skipStatement"
   exprCode <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 0)]
-  newLabel <- getNewLabel
-  let jumpIfEqual = U.instrsToCode [U.Je newLabel]
+  let jumpIfEqual = U.instrsToCode [U.Je skipStatementLabel]
   stmtCode <- generateCode s
-  let labelInCode = U.instrsToCode [U.Label newLabel]
+  let labelInCode = U.instrsToCode [U.Label skipStatementLabel]
   return $ labelInCode <> stmtCode <> jumpIfEqual <> compareWithZero <> popResultToRegister <> exprCode
-generateCode _ = undefined
+generateCode (A.SCondElse _ e s1 s2) = do
+  labelFalse <- getNewLabel "lFalse"
+  labelEnd <- getNewLabel "lEnd"
+  exprCode <- liftExprTEval (evalExpr e)
+  tmp1 <- getTmpRegister
+  let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 0)]
+  let jumpToFalseIfEqual = U.instrsToCode [U.Je labelFalse]
+  s1Code <- generateCode s1
+  let jumpToEnd = U.instrsToCode [U.Jmp labelEnd]
+  let labelFalseCode = U.instrsToCode [U.Label labelFalse]
+  s2Code <- generateCode s2
+  let labelEndCode = U.instrsToCode [U.Label labelEnd]
+  return $ labelEndCode <> s2Code <> labelFalseCode <> jumpToEnd <> s1Code <> jumpToFalseIfEqual <> compareWithZero <> popResultToRegister <> exprCode
+generateCode (A.SWhile _ e s) = do
+  l1 <- getNewLabel "L1"
+  l2 <- getNewLabel "L2"
+  let goToL2Code = U.instrsToCode [U.Jmp l2]
+  let l1Code = U.instrsToCode [U.Label l1]
+  bodyCode <- generateCode s
+  let l2Code = U.instrsToCode [U.Label l2]
+  exprCode <- liftExprTEval (evalExpr e)
+  tmp1 <- getTmpRegister
+  let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let compareWithOne = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 1)]
+  let jumpToL1IfEqual = U.instrsToCode [U.Je l1]
+  return $ jumpToL1IfEqual <> compareWithOne <> popResultToRegister <> exprCode <> l2Code <> bodyCode <> l1Code <> goToL2Code
+generateCode (A.SExp _ e) = do
+  exprCode <- liftExprTEval (evalExpr e)
+  let popToNothing = U.popToNothing
+  return $ popToNothing <> exprCode
 
 getLValueAddressOnStack :: A.Expr -> StmtTEval U.X86Code
 getLValueAddressOnStack (A.EVar _ ident) = do
