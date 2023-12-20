@@ -23,7 +23,7 @@ instance Monoid X86Code where
   mempty = X86Code $ DList.fromList []
 
 -- Intel syntax
-data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand
+data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand | Cmp Operand Operand | Je String
 
 type Register = String
 

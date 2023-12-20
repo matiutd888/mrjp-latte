@@ -17,6 +17,7 @@ import Data.Text.Lazy.Builder (toLazyText)
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
+import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -35,6 +36,26 @@ data LabelWriter = LWriter
 
 labelReturn :: LabelWriter -> String
 labelReturn (LWriter f c _) = c ++ "$" ++ f ++ "return"
+
+getNewLabel :: StmtTEval String
+getNewLabel = do
+  env <- get
+  let lw = eWriter env
+  let ret = getLabel lw
+  put $
+    env
+      { eWriter = advanceLabel lw
+      }
+  return ret
+  where
+    advanceLabel :: LabelWriter -> LabelWriter
+    advanceLabel l =
+      l
+        { lCounter = lCounter l + 1
+        }
+
+    getLabel :: LabelWriter -> String
+    getLabel l = lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l)
 
 data Env = Env
   { eCurrClass :: Maybe A.UIdent,
@@ -214,6 +235,16 @@ generateCode (A.SDecr _ e) = do
   let decrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant $ show (-1))]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
   return $ movValueToLocation <> decrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
+generateCode (A.SCond _ e s) = do
+  exprCode <- liftExprTEval (evalExpr e)
+  tmp1 <- getTmpRegister
+  let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 0)]
+  newLabel <- getNewLabel
+  let jumpIfEqual = U.instrsToCode [U.Je newLabel]
+  stmtCode <- generateCode s
+  let labelInCode = U.instrsToCode [U.Label newLabel]
+  return $ labelInCode <> stmtCode <> jumpIfEqual <> compareWithZero <> popResultToRegister <> exprCode
 generateCode _ = undefined
 
 getLValueAddressOnStack :: A.Expr -> StmtTEval U.X86Code
