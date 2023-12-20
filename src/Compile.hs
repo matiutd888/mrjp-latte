@@ -207,12 +207,13 @@ generateCode (A.SRet _ e) = do
   let popResult = U.instrToCode $ U.Pop $ U.Reg U.resultRegister
   lWriter <- gets eWriter
   let lReturn = labelReturn lWriter
-  let jumpToEpilogue = U.instrToCode $ U.Label lReturn
+  let jumpToEpilogue = U.instrToCode $ U.Jmp lReturn
   return $ jumpToEpilogue <> popResult <> exprCode
 generateCode (A.SVRet _) = do
   lWriter <- gets eWriter
   let lReturn = labelReturn lWriter
-  return $ U.instrToCode $ U.Label lReturn
+  let jmpToEpilogue = U.instrToCode $ U.Jmp lReturn
+  return jmpToEpilogue
 generateCode (A.SAss _ e1 e2) = do
   putOnStack <- getLValueAddressOnStack e1
   exprCode <- liftExprTEval (evalExpr e2)
