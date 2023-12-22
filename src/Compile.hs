@@ -138,23 +138,33 @@ liftExprTEval e = do
   put newEnv
   return a
 
-evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
-evalExpr (A.EOr _ e1 e2) = do
+getExpressionsValuesInRegisters :: A.Expr -> A.Expr -> ExprTEval (U.X86Code, U.Register, U.Register)
+getExpressionsValuesInRegisters e1 e2 = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  return (popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2)
+
+evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
+evalExpr (A.EAdd _ e1 _ e2) = do
+  -- TODO here check the type of expression returned by evalExpr e1
+  -- THen we will deduce if we are dealing with strings or ints
+  -- Generated code will be different for each of them.
+  undefined
+evalExpr (A.EMul _ e1 _ e2) = do
+  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
+  undefined
+evalExpr (A.EOr _ e1 e2) = do
+  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return (pushResult <> orRegisters <> popValuesToTmpRegisters <> e2Code <> e1Code, A.TBool noPos)
+  return (pushResult <> orRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.EAnd _ e1 e2) = do
-  (e1Code, _) <- evalExpr e1
-  (e2Code, _) <- evalExpr e2
-  (tmp1, tmp2) <- getTwoTmpRegisters
-  let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let andRegisters = U.instrToCode $ U.And (U.Reg tmp1) (U.Reg tmp2)
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return (pushResult <> andRegisters <> popValuesToTmpRegisters <> e2Code <> e1Code, A.TBool noPos)
+  return (pushResult <> andRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.Not _ e) = do
   (exprCode, t) <- evalExpr e
   let xorTopOfTheStack = U.instrToCode $ U.Xor (U.SimpleMem U.stackRegister 0) (U.Constant 1)
