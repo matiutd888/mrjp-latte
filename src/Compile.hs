@@ -3,22 +3,25 @@
 module Compile where
 
 import qualified Control.Applicative as DM
+import Control.Arrow (Arrow (second))
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
+import qualified Data.Bool as A
 import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import qualified Data.DList as U
 import qualified Data.Map as M
 import qualified Data.Maybe as DM
+import Data.Text.Internal.Fusion (Step (Done))
+import Data.Text.Internal.Fusion.Size (Size)
 import qualified Data.Text.Lazy as T
 import Data.Text.Lazy.Builder (toLazyText)
 import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
-import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -27,7 +30,7 @@ type Loc = Int
 
 type StmtTEval a = StateT Env (ExceptT String IO) a
 
-type ExprTEval a = ReaderT Env (ExceptT String IO) a
+type ExprTEval a = StateT Env (ExceptT String IO) a
 
 data LabelWriter = LWriter
   { lFunName :: String,
@@ -65,7 +68,8 @@ data Env = Env
     eVarLocs :: M.Map A.UIdent Loc, -- Location relative to ebp
     eVarTypes :: M.Map A.UIdent A.Type,
     eWriter :: LabelWriter,
-    eLocalVarsBytesCounter :: Int
+    eLocalVarsBytesCounter :: Int,
+    eStringConstants :: M.Map String String
   }
 
 initEnv :: M.Map A.UIdent A.Type -> M.Map A.UIdent ClassType -> Env
@@ -77,7 +81,8 @@ initEnv functions classes =
       eVarLocs = M.empty,
       eVarTypes = M.empty,
       eWriter = LWriter "" "" 0,
-      eLocalVarsBytesCounter = 0
+      eLocalVarsBytesCounter = 0,
+      eStringConstants = M.empty
     }
 
 getTmpRegister :: StmtTEval U.Register
@@ -88,7 +93,7 @@ getTwoTmpRegisters = return ("ecx", "edi")
 
 moveLocalVariableAddressToRegister :: Int -> U.Register -> StmtTEval U.X86Code
 moveLocalVariableAddressToRegister offsetRelativeToFR reg = do
-  return $ U.instrsToCode [U.Mov (U.Reg reg) (U.Reg U.frameRegister), U.Add (U.Reg reg) (U.Constant $ show offsetRelativeToFR)]
+  return $ U.instrsToCode [U.Mov (U.Reg reg) (U.Reg U.frameRegister), U.Add (U.Reg reg) (U.Constant offsetRelativeToFR)]
 
 -- moveStackToRegister :: U.Register -> U.X86Code
 -- moveStackToRegister reg =
@@ -110,7 +115,7 @@ prologue bytesForLocals =
   U.instrsToCode
     [ U.Push $ U.Reg U.frameRegister,
       U.Mov (U.Reg U.frameRegister) (U.Reg U.stackRegister),
-      U.Sub (U.Reg U.stackRegister) $ U.Constant (show bytesForLocals)
+      U.Sub (U.Reg U.stackRegister) $ U.Constant bytesForLocals
     ]
 
 epilogue :: U.X86Code
@@ -121,16 +126,31 @@ epilogue =
       U.Return
     ]
 
-runExprTEval :: Env -> ExprTEval a -> IO (Either String a)
-runExprTEval env e = runExceptT (runReaderT e env)
+runExprTEval :: Env -> ExprTEval a -> IO (Either String (a, Env))
+runExprTEval env e = runExceptT (runStateT e env)
 
 liftExprTEval :: ExprTEval a -> StmtTEval a
 liftExprTEval e = do
   env <- get
-  liftIO (runExprTEval env e) >>= liftEither
+  (a, newEnv) <- liftIO (runExprTEval env e) >>= liftEither
+  put newEnv
+  return a
 
 evalExpr :: A.Expr -> ExprTEval U.X86Code
-evalExpr = undefined
+evalExpr (A.EString _ s) = do
+  newStringLabel <- getNewLabel "stringLit"
+  env <- get
+  put $ env {eStringConstants = M.insert newStringLabel s (eStringConstants env)}
+  -- TODO maybe put the constant on heap?
+  return $ U.instrsToCode [U.Push $ U.StringConstant newStringLabel]
+evalExpr (A.ELitInt _ i) = return $ U.instrsToCode [U.Push $ U.Constant $ fromIntegral i]
+evalExpr (A.ELitFalse _) = return $ U.instrsToCode [U.Push $ U.Constant 0]
+evalExpr (A.ELitTrue _) = return $ U.instrsToCode [U.Push $ U.Constant 1]
+evalExpr A.EMemberCall {} = undefined
+evalExpr A.EMember {} = undefined
+evalExpr (A.ESelf _) = undefined
+evalExpr (A.ENewObject _ _) = undefined
+evalExpr _ = undefined
 
 getNumberOfBytesForLocals :: A.Stmt -> Int
 getNumberOfBytesForLocals = fst . getNumberOfBytesForLocalsHelper 0 0
@@ -226,7 +246,7 @@ generateCode (A.SIncr _ e) = do
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popAddressToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let movValueToRegister = U.instrsToCode [U.Mov (U.Reg tmp2) (U.SimpleMem tmp1 0)]
-  let incrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant $ show 1)]
+  let incrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant 1)]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
   return $ movValueToLocation <> incrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode (A.SDecr _ e) = do
@@ -234,7 +254,7 @@ generateCode (A.SDecr _ e) = do
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popAddressToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let movValueToRegister = U.instrsToCode [U.Mov (U.Reg tmp2) (U.SimpleMem tmp1 0)]
-  let decrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant $ show (-1))]
+  let decrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant (-1))]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
   return $ movValueToLocation <> decrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode (A.SCond _ e s) = do
@@ -242,7 +262,7 @@ generateCode (A.SCond _ e s) = do
   exprCode <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
-  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 0)]
+  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 0)]
   let jumpIfEqual = U.instrsToCode [U.Je skipStatementLabel]
   stmtCode <- generateCode s
   let labelInCode = U.instrsToCode [U.Label skipStatementLabel]
@@ -253,7 +273,7 @@ generateCode (A.SCondElse _ e s1 s2) = do
   exprCode <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
-  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 0)]
+  let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 0)]
   let jumpToFalseIfEqual = U.instrsToCode [U.Je labelFalse]
   s1Code <- generateCode s1
   let jumpToEnd = U.instrsToCode [U.Jmp labelEnd]
@@ -271,7 +291,7 @@ generateCode (A.SWhile _ e s) = do
   exprCode <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
-  let compareWithOne = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant $ show 1)]
+  let compareWithOne = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 1)]
   let jumpToL1IfEqual = U.instrsToCode [U.Je l1]
   return $ jumpToL1IfEqual <> compareWithOne <> popResultToRegister <> exprCode <> l2Code <> bodyCode <> l1Code <> goToL2Code
 generateCode (A.SExp _ e) = do

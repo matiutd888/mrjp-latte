@@ -27,7 +27,7 @@ data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Oper
 
 type Register = String
 
-data Operand = Reg Register | SimpleMem Register Int | Constant String
+data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -50,7 +50,7 @@ data Operand = Reg Register | SimpleMem Register Int | Constant String
 --
 
 popToNothing :: X86Code
-popToNothing = instrsToCode [Add (Reg stackRegister) (Constant "4")]
+popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]
 
 instrToCode :: Asm -> X86Code
 instrToCode = instrsToCode . (: [])
