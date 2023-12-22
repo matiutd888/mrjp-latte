@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 inline void *malloc_and_return_address(size_t size) {
     void *res = malloc(size);
@@ -18,7 +19,7 @@ char *concat_strings(const char *str1, const char *str2) {
     size_t total_len = len1 + len2 + 1;  // Add 1 for the null terminator
 
     // Allocate memory for the concatenated string
-    char *result = malloc_and_return_address(total_len);
+    char *result = (char *)malloc_and_return_address(total_len);
 
     strcpy(result, str1);
     strcat(result, str2);

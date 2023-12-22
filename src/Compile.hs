@@ -13,6 +13,7 @@ import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import qualified Data.DList as U
 import qualified Data.Map as M
+import Data.Maybe (fromJust)
 import qualified Data.Maybe as DM
 import Data.Text.Internal.Fusion (Step (Done))
 import Data.Text.Internal.Fusion.Size (Size)
@@ -22,6 +23,7 @@ import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
+import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -136,16 +138,50 @@ liftExprTEval e = do
   put newEnv
   return a
 
-evalExpr :: A.Expr -> ExprTEval U.X86Code
+evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
+evalExpr (A.EOr _ e1 e2) = do
+  (e1Code, _) <- evalExpr e1
+  (e2Code, _) <- evalExpr e2
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+  return (pushResult <> orRegisters <> popValuesToTmpRegisters <> e2Code <> e1Code, A.TBool noPos)
+evalExpr (A.EAnd _ e1 e2) = do
+  (e1Code, _) <- evalExpr e1
+  (e2Code, _) <- evalExpr e2
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  let andRegisters = U.instrToCode $ U.And (U.Reg tmp1) (U.Reg tmp2)
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+  return (pushResult <> andRegisters <> popValuesToTmpRegisters <> e2Code <> e1Code, A.TBool noPos)
+evalExpr (A.Not _ e) = do
+  (exprCode, t) <- evalExpr e
+  let xorTopOfTheStack = U.instrToCode $ U.Xor (U.SimpleMem U.stackRegister 0) (U.Constant 1)
+  return (xorTopOfTheStack <> exprCode, t)
+evalExpr (A.Neg _ e) = do
+  (exprCode, t) <- evalExpr e
+  let negateValue = U.instrToCode $ U.Neg $ U.SimpleMem U.stackRegister 0
+  return (negateValue <> exprCode, t)
+evalExpr (A.EApp _ f exprs) = do
+  retType <- gets ((fromJust . M.lookup f) . eFunctions)
+  let reverseExprs = reverse exprs
+  result <- mapM evalExpr reverseExprs
+  let pushAllArgumentsToTheStack = mconcat $ map fst result
+  let callF = U.instrToCode $ U.Call $ printTree f
+  let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
+  let pushReturnValue = U.instrsToCode $ [U.Push $ U.Reg U.resultRegister]
+  return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EString _ s) = do
   newStringLabel <- getNewLabel "stringLit"
   env <- get
   put $ env {eStringConstants = M.insert newStringLabel s (eStringConstants env)}
   -- TODO maybe put the constant on heap?
-  return $ U.instrsToCode [U.Push $ U.StringConstant newStringLabel]
-evalExpr (A.ELitInt _ i) = return $ U.instrsToCode [U.Push $ U.Constant $ fromIntegral i]
-evalExpr (A.ELitFalse _) = return $ U.instrsToCode [U.Push $ U.Constant 0]
-evalExpr (A.ELitTrue _) = return $ U.instrsToCode [U.Push $ U.Constant 1]
+  return (U.instrsToCode [U.Push $ U.StringConstant newStringLabel], A.TStr noPos)
+evalExpr (A.ELitInt _ i) = return (U.instrsToCode [U.Push $ U.Constant $ fromIntegral i], A.TInt noPos)
+evalExpr (A.ELitFalse _) = return (U.instrsToCode [U.Push $ U.Constant 0], A.TBool noPos)
+evalExpr (A.ELitTrue _) = return (U.instrsToCode [U.Push $ U.Constant 1], A.TBool noPos)
+evalExpr A.ECastNull {} = undefined
 evalExpr A.EMemberCall {} = undefined
 evalExpr A.EMember {} = undefined
 evalExpr (A.ESelf _) = undefined
@@ -214,16 +250,17 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
           }
       return ()
 
+    -- TODO init variables here.
     handleItem :: A.Item -> StmtTEval U.X86Code
     handleItem (A.SNoInit _ ident) = handleDecl ident >> return mempty
     handleItem (A.SInit _ ident expr) = do
       handleDecl ident
-      exprCode <- liftExprTEval (evalExpr expr)
+      (exprCode, _) <- liftExprTEval (evalExpr expr)
       env <- get
       let moveValueToLocationCode = U.instrToCode $ U.Pop $ U.SimpleMem U.frameRegister (eVarLocs env M.! ident)
       return $ moveValueToLocationCode <> exprCode
 generateCode (A.SRet _ e) = do
-  exprCode <- liftExprTEval (evalExpr e)
+  (exprCode, _) <- liftExprTEval (evalExpr e)
   let popResult = U.instrToCode $ U.Pop $ U.Reg U.resultRegister
   lWriter <- gets eWriter
   let lReturn = labelReturn lWriter
@@ -236,7 +273,7 @@ generateCode (A.SVRet _) = do
   return jmpToEpilogue
 generateCode (A.SAss _ e1 e2) = do
   putOnStack <- getLValueAddressOnStack e1
-  exprCode <- liftExprTEval (evalExpr e2)
+  (exprCode, _) <- liftExprTEval (evalExpr e2)
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
@@ -259,7 +296,7 @@ generateCode (A.SDecr _ e) = do
   return $ movValueToLocation <> decrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode (A.SCond _ e s) = do
   skipStatementLabel <- getNewLabel "skipStatement"
-  exprCode <- liftExprTEval (evalExpr e)
+  (exprCode, _) <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 0)]
@@ -270,7 +307,7 @@ generateCode (A.SCond _ e s) = do
 generateCode (A.SCondElse _ e s1 s2) = do
   labelFalse <- getNewLabel "lFalse"
   labelEnd <- getNewLabel "lEnd"
-  exprCode <- liftExprTEval (evalExpr e)
+  (exprCode, _) <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let compareWithZero = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 0)]
@@ -288,14 +325,14 @@ generateCode (A.SWhile _ e s) = do
   let l1Code = U.instrsToCode [U.Label l1]
   bodyCode <- generateCode s
   let l2Code = U.instrsToCode [U.Label l2]
-  exprCode <- liftExprTEval (evalExpr e)
+  (exprCode, _) <- liftExprTEval (evalExpr e)
   tmp1 <- getTmpRegister
   let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let compareWithOne = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant 1)]
   let jumpToL1IfEqual = U.instrsToCode [U.Je l1]
   return $ jumpToL1IfEqual <> compareWithOne <> popResultToRegister <> exprCode <> l2Code <> bodyCode <> l1Code <> goToL2Code
 generateCode (A.SExp _ e) = do
-  exprCode <- liftExprTEval (evalExpr e)
+  (exprCode, _) <- liftExprTEval (evalExpr e)
   let popToNothing = U.popToNothing
   return $ popToNothing <> exprCode
 
