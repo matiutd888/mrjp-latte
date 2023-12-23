@@ -251,6 +251,7 @@ typeStmt (A.SDecl _ t items) = do
     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
     addItemToEnv itemType (A.SNoInit pos ident) = do
       -- TODO check for shadowing
+      -- TODO evaluate expression in old environment? See core019.lat
       env <- get
       validateIdentifier pos ident
       checkVariableLevel pos ident

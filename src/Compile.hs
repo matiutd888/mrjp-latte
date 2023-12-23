@@ -146,20 +146,44 @@ getExpressionsValuesInRegisters e1 e2 = do
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
   return (popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2)
 
-addStrings :: ExprTEval U.X86Code
-addStrings = undefined
-
-addIntCode :: ExprTEval U.X86Code
-addIntCode = do
+getExpressionsValuesInRegistersWithType :: A.Expr -> A.Expr -> ExprTEval (A.Type, A.Type, U.X86Code, U.Register, U.Register)
+getExpressionsValuesInRegistersWithType e1 e2 = do
+  (e1Code, t1) <- evalExpr e1
+  (e2Code, t2) <- evalExpr e2
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  return (t1, t2, popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2, )
+
+
+
+addStrings :: Register -> Register -> ExprTEval U.X86Code
+addStrings = undefined
+
+compareStrings :: A.RelOp -> Register -> Register -> ExprTEval U.X86Code
+compareStrings = undefined
+
+compareValues :: A.RelOp -> ExprTEval U.X86Code
+compareValues (A.EQU) = do
+  l <- getNewLabel "equ"
+  jz 
+
+addIntCode :: Register -> Register -> ExprTEval U.X86Code
+addIntCode tmp1 tmp2 = do
   let addRegisters = U.instrsToCode $ [U.Add (U.Reg tmp1) (U.Reg tmp2)]
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
   return $ pushResult <> addRegisters <> popValuesToTmpRegisters
-
-
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
 evalExpr (A.ERel _ e1 erel e2) = do
+  (t1, t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
+  case t1 of
+    A.TStr _ -> do
+      compareStringsCode <- compareStrings erel tmp1 tmp2
+      return (compareStringsCode <> valuesInRegistersCode, A.TBool noPos)
+    _ -> do
+      let cmpRegisters = U.instrsToCode $ [U.Cmp (U.Reg tmp1) (U.Reg tmp2)]
+
+
+
 
 evalExpr (A.EAdd _ e1 (A.Minus _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
@@ -167,15 +191,14 @@ evalExpr (A.EAdd _ e1 (A.Minus _) e2) = do
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
   return $ pushResult <> subRegisters <> valuesInRegistersCode
 evalExpr (A.EAdd _ e1 (A.Plus _) e2) = do
-  (e1Code, t1) <- evalExpr e1
-  (e2Code, t2) <- evalExpr e1
-  case t of
+  (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType
+  case t1 of
     A.TStr _ -> do 
-      addStringsCode <- addStrings
-      return (addStringsCode <> e2Code <> e1Code, t1)
+      addStringsCode <- addStrings tmp1 tmp2
+      return $ (addStrings <> valuesInRegistersCode, t1)
     A.TInt _ -> do
       addIntCode <- addInt
-      return (addIntCode <> e2Code <> e1Code, t1)
+      return (addIntCode <> valuesInRegistersCode, t1)
     _ -> undefined
 
 evalExpr (A.EMul _ e1 (A.Mod _) e2) = do
