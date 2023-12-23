@@ -159,10 +159,15 @@ addIntCode = do
 
 
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
-evalExpr (A.EAdd _ e1 (A.Plus) e2) = do
+
+evalExpr (A.EAdd _ e1 (A.Minus _) e2) = do
+  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
+  let subRegisters = U.instrsToCode $ [U.Sub (U.Reg tmp1) (U.Reg tmp2)]
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+  return $ pushResult <> subRegisters <> valuesInRegistersCode
+evalExpr (A.EAdd _ e1 (A.Plus _) e2) = do
   (e1Code, t1) <- evalExpr e1
   (e2Code, t2) <- evalExpr e1
-
   case t of
     A.TStr _ -> do 
       addStringsCode <- addStrings
@@ -171,7 +176,7 @@ evalExpr (A.EAdd _ e1 (A.Plus) e2) = do
       addIntCode <- addInt
       return (addIntCode <> e2Code <> e1Code, t1)
     _ -> undefined
-    
+
 evalExpr (A.EMul _ e1 (A.Mod _) e2) = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
