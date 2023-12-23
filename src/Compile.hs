@@ -152,9 +152,19 @@ evalExpr (A.EAdd _ e1 _ e2) = do
   -- THen we will deduce if we are dealing with strings or ints
   -- Generated code will be different for each of them.
   undefined
-evalExpr (A.EMul _ e1 _ e2) = do
+
+evalExpr (A.EMul _ e1 (A.Div _) e2) = do
+  (e1Code, _) <- evalExpr e1
+  (e2Code, _) <- evalExpr e2
+  let zeroEdx = U \dot instrsToCode $ [U \dot Xor (U.Reg tmp1)]
+  let mulRegisters = U.instrToCode $ U.Imul (U.Reg tmp1) (U.Reg tmp2)
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1  
+  return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
+evalExpr (A.EMul _ e1 (A.Times _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
-  undefined
+  let mulRegisters = U.instrToCode $ U.Imul (U.Reg tmp1) (U.Reg tmp2)
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1  
+  return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
 evalExpr (A.EOr _ e1 e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
