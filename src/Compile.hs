@@ -159,6 +159,7 @@ addIntCode = do
 
 
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
+evalExpr (A.ERel _ e1 erel e2) = do
 
 evalExpr (A.EAdd _ e1 (A.Minus _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
@@ -201,11 +202,13 @@ evalExpr (A.EMul _ e1 (A.Times _) e2) = do
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1  
   return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
 evalExpr (A.EOr _ e1 e2) = do
+  -- TODO implement short circuit
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
   return (pushResult <> orRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.EAnd _ e1 e2) = do
+  -- TODO implement short circuit
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let andRegisters = U.instrToCode $ U.And (U.Reg tmp1) (U.Reg tmp2)
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
