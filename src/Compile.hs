@@ -156,10 +156,12 @@ evalExpr (A.EAdd _ e1 _ e2) = do
 evalExpr (A.EMul _ e1 (A.Div _) e2) = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
-  let zeroEdx = U \dot instrsToCode $ [U \dot Xor (U.Reg tmp1)]
-  let mulRegisters = U.instrToCode $ U.Imul (U.Reg tmp1) (U.Reg tmp2)
-  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1  
-  return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
+  let popDivisorToEcx = U.instrsToCode $ [U.Pop "ecx"]
+  let popDividentToEax = U.instrsToCode $ [U.Pop $ U.Reg "eax"]
+  let prepareEdxValue = U.instrsToCode $ [U.Mov (U.Reg "edx") (U.Reg "eax"), U.Sar 31] 
+  let divRegisters = U.instrToCode $ U.Idiv (U.Reg "ecx)
+  let pushResult = U.instrToCode $ U.Push $ U.Reg "eax"
+  return (pushResult <> divRegisters <> prepareEdxValue <> popDividentToEax <> popDivisorToEcx <> e2Code <> e1Code, A.TInt noPos)
 evalExpr (A.EMul _ e1 (A.Times _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let mulRegisters = U.instrToCode $ U.Imul (U.Reg tmp1) (U.Reg tmp2)
