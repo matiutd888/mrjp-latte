@@ -146,13 +146,32 @@ getExpressionsValuesInRegisters e1 e2 = do
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
   return (popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2)
 
-evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
-evalExpr (A.EAdd _ e1 _ e2) = do
-  -- TODO here check the type of expression returned by evalExpr e1
-  -- THen we will deduce if we are dealing with strings or ints
-  -- Generated code will be different for each of them.
-  undefined
+addStrings :: ExprTEval U.X86Code
+addStrings = undefined
 
+addIntCode :: ExprTEval U.X86Code
+addIntCode = do
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
+  let addRegisters = U.instrsToCode $ [U.Add (U.Reg tmp1) (U.Reg tmp2)]
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+  return $ pushResult <> addRegisters <> popValuesToTmpRegisters
+
+
+evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
+evalExpr (A.EAdd _ e1 (A.Plus) e2) = do
+  (e1Code, t1) <- evalExpr e1
+  (e2Code, t2) <- evalExpr e1
+
+  case t of
+    A.TStr _ -> do 
+      addStringsCode <- addStrings
+      return (addStringsCode <> e2Code <> e1Code, t1)
+    A.TInt _ -> do
+      addIntCode <- addInt
+      return (addIntCode <> e2Code <> e1Code, t1)
+    _ -> undefined
+    
 evalExpr (A.EMul _ e1 (A.Mod _) e2) = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
