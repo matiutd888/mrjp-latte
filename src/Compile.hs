@@ -95,7 +95,7 @@ getTwoTmpRegisters = return ("ecx", "edi")
 
 moveLocalVariableAddressToRegister :: Int -> U.Register -> StmtTEval U.X86Code
 moveLocalVariableAddressToRegister offsetRelativeToFR reg =
-  return $ U.instrsToCode [U.Mov (U.Reg reg) (U.Reg U.frameRegister), U.Add (U.Reg reg) (U.Constant offsetRelativeToFR)]
+  return $ U.instrsToCode [U.Lea (U.Reg reg) (U.SimpleMem U.frameRegister offsetRelativeToFR)]
 
 -- moveStackToRegister :: U.Register -> U.X86Code
 -- moveStackToRegister reg =
@@ -199,6 +199,11 @@ compareValues (A.LTH _) = compareValuesHelper "lth" U.Jae
 compareValues (A.GTH _) = compareValuesHelper "gth" U.Jbe
 
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
+evalExpr (A.EVar _ x) = do
+  location <- gets (fromJust . M.lookup x . eVarLocs)
+  t <- gets (fromJust . M.lookup x . eVarTypes)
+  let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister location]
+  return (pushValue, t)
 evalExpr (A.ERel _ e1 erel e2) = do
   (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType e1 e2
   case t1 of
@@ -296,7 +301,6 @@ evalExpr A.EMemberCall {} = undefined
 evalExpr A.EMember {} = undefined
 evalExpr (A.ESelf _) = undefined
 evalExpr (A.ENewObject _ _) = undefined
-evalExpr _ = undefined
 
 getNumberOfBytesForLocals :: A.Stmt -> Int
 getNumberOfBytesForLocals = fst . getNumberOfBytesForLocalsHelper 0 0

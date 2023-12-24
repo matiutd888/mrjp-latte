@@ -47,6 +47,7 @@ data Asm
   | Jb String
   | Jae String
   | Jbe String
+  | Lea Operand Operand
 
 type Register = String
 
