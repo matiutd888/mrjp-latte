@@ -22,33 +22,6 @@ instance Monoid X86Code where
   mempty :: X86Code
   mempty = X86Code $ DList.fromList []
 
--- Intel syntax
-data Asm
-  = Return
-  | Label String
-  | Push Operand
-  | Mov Operand Operand
-  | Sub Operand Operand
-  | Add Operand Operand
-  | Pop Operand
-  | Cmp Operand Operand
-  | Je String
-  | Jmp String
-  | Call String
-  | Neg Operand
-  | Xor Operand Operand
-  | And Operand Operand
-  | Or Operand Operand
-  | Imul Operand Operand
-  | Idiv Operand
-  | Sar Integer
-  | Jne String
-  | Ja String
-  | Jb String
-  | Jae String
-  | Jbe String
-  | Lea Operand Operand
-
 type Register = String
 
 data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String
@@ -73,8 +46,73 @@ data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringCons
 
 --
 
+operandToString :: Operand -> String
+operandToString (Reg register) = "%" ++ register
+operandToString (SimpleMem reg int) = show int ++ " (%" ++ reg ++ ")"
+operandToString (Constant int) = "$" ++ show int
+operandToString (StringConstant s) = "$" ++ show s
+
+helperI2Str2Operands :: String -> Operand -> Operand -> String
+helperI2Str2Operands s o1 o2 = s ++ " " ++ operandToString o1 ++ ", " ++ operandToString o2
+
+helperI2Str1Operand :: String -> Operand -> String
+helperI2Str1Operand s o = s ++ " " ++ operandToString o
+
+helperI2Str1String :: String -> String -> String
+helperI2Str1String s o = s ++ " " ++ o
+
 instrToString :: Asm -> String
-instrToString = undefined
+instrToString Return = "ret"
+instrToString (Label s) = s ++ ":"
+instrToString (Push s) = helperI2Str1Operand "push" s
+instrToString (Mov dest src) = helperI2Str2Operands "mov" src dest
+instrToString (Sub x y) = helperI2Str2Operands "sub" y x
+instrToString (Add x y) = helperI2Str2Operands "add" y x
+instrToString (Pop o) = helperI2Str1Operand "pop" o
+instrToString (Cmp x y) = helperI2Str2Operands "cmp" y x
+instrToString (Je x) = helperI2Str1String "je" x
+instrToString (Jmp x) = helperI2Str1String "jmp" x
+instrToString (Call x) = helperI2Str1String "call" x
+instrToString (Neg x) = helperI2Str1Operand "neg" x
+instrToString (Xor x y) = helperI2Str2Operands "xor" y x
+instrToString (And x y) = helperI2Str2Operands "and" y x
+instrToString (Or x y) = helperI2Str2Operands "or" y x
+instrToString (Imul x y) = helperI2Str2Operands "imul" y x
+instrToString (Idiv x) = helperI2Str1Operand "idiv" x
+instrToString (Sar x y) = helperI2Str2Operands "sar" y x
+instrToString (Jne x) = helperI2Str1String "jne" x
+instrToString (Ja x) = helperI2Str1String "ja" x
+instrToString (Jb x) = helperI2Str1String "jb" x
+instrToString (Jae x) = helperI2Str1String "jae" x
+instrToString (Jbe x) = helperI2Str1String "jbe" x
+instrToString (Lea x y) = helperI2Str2Operands "lea" y x
+
+-- Intel syntax
+data Asm
+  = Return
+  | Label String
+  | Push Operand
+  | Mov Operand Operand
+  | Sub Operand Operand
+  | Add Operand Operand
+  | Pop Operand
+  | Cmp Operand Operand
+  | Je String
+  | Jmp String
+  | Call String
+  | Neg Operand
+  | Xor Operand Operand
+  | And Operand Operand
+  | Or Operand Operand
+  | Imul Operand Operand
+  | Idiv Operand
+  | Sar Operand Operand
+  | Jne String
+  | Ja String
+  | Jb String
+  | Jae String
+  | Jbe String
+  | Lea Operand Operand
 
 popToNothing :: X86Code
 popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]
