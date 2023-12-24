@@ -251,7 +251,8 @@ typeStmt (A.SDecl _ t items) = do
     addItemToEnv :: A.Type -> A.Item -> StmtTEval ()
     addItemToEnv itemType (A.SNoInit pos ident) = do
       -- TODO check for shadowing
-      -- TODO evaluate expression in old environment? See core019.lat
+      -- TODO think about adding to environment variables AFTER checking all expressions.
+
       env <- get
       validateIdentifier pos ident
       checkVariableLevel pos ident
@@ -264,13 +265,13 @@ typeStmt (A.SDecl _ t items) = do
     addItemToEnv itemType (A.SInit pos ident expr) = do
       checkVariableLevel pos ident
       validateIdentifier pos ident
+      checkExpressionTypeEqualOrSubType itemType expr
       env <- get
       put $
         env
           { localVariables = M.insert ident t (localVariables env),
             variableLevels = M.insert ident (level env) (variableLevels env)
           }
-      checkExpressionTypeEqualOrSubType itemType expr
       return ()
 typeStmt (A.SRet pos expr) = do
   env <- get

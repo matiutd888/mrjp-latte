@@ -347,8 +347,8 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
       itemCode <- handleItem item
       return $ itemCode <> currCode
 
-    handleDecl :: A.UIdent -> StmtTEval ()
-    handleDecl ident = do
+    addDeclToEnv :: A.UIdent -> StmtTEval ()
+    addDeclToEnv ident = do
       ctr <- gets eLocalVarsBytesCounter
       let variableOffset = ctr - U.sizeOfTypeBytes t
       env <- get
@@ -360,12 +360,16 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
           }
       return ()
 
-    -- TODO init variables here.
     handleItem :: A.Item -> StmtTEval U.X86Code
-    handleItem (A.SNoInit _ ident) = handleDecl ident >> return mempty
+    handleItem (A.SNoInit p ident) = let expr = getDefaultValueExpressionByType t in handleItem (A.SInit p ident expr)
+      where
+        getDefaultValueExpressionByType (A.TInt _) = A.ELitInt noPos 0
+        getDefaultValueExpressionByType (A.TStr _) = A.EString noPos ""
+        getDefaultValueExpressionByType (A.TBool _) = A.ELitFalse noPos
+        getDefaultValueExpressionByType _ = undefined
     handleItem (A.SInit _ ident expr) = do
-      handleDecl ident
       (exprCode, _) <- liftExprTEval (evalExpr expr)
+      addDeclToEnv ident
       env <- get
       let moveValueToLocationCode = U.instrToCode $ U.Pop $ U.SimpleMem U.frameRegister (eVarLocs env M.! ident)
       return $ moveValueToLocationCode <> exprCode
