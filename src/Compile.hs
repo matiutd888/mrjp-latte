@@ -94,7 +94,7 @@ getTwoTmpRegisters :: StmtTEval (U.Register, U.Register)
 getTwoTmpRegisters = return ("ecx", "edi")
 
 moveLocalVariableAddressToRegister :: Int -> U.Register -> StmtTEval U.X86Code
-moveLocalVariableAddressToRegister offsetRelativeToFR reg = do
+moveLocalVariableAddressToRegister offsetRelativeToFR reg =
   return $ U.instrsToCode [U.Mov (U.Reg reg) (U.Reg U.frameRegister), U.Add (U.Reg reg) (U.Constant offsetRelativeToFR)]
 
 -- moveStackToRegister :: U.Register -> U.X86Code
@@ -152,77 +152,106 @@ getExpressionsValuesInRegistersWithType e1 e2 = do
   (e2Code, t2) <- evalExpr e2
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popValuesToTmpRegisters = U.instrsToCode [U.Pop (U.Reg tmp2), U.Pop (U.Reg tmp1)]
-  return (t1, t2, popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2, )
+  return (t1, t2, popValuesToTmpRegisters <> e2Code <> e1Code, tmp1, tmp2)
 
+addStrings :: U.Register -> U.Register -> ExprTEval U.X86Code
+addStrings tmp1 tmp2 = do
+  let pushSecondArgument = U.instrToCode $ U.Push $ U.Reg tmp2
+  let pushFirstArgument = U.instrToCode $ U.Push $ U.Reg tmp1
+  let callUtilsMethod = U.instrToCode $ U.Call U.helperConcatStrings
+  let popArguments = U.popToNothing <> U.popToNothing
+  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
+  return $ pushReturnValue <> popArguments <> callUtilsMethod <> pushFirstArgument <> pushSecondArgument
 
+compareStrings :: A.RelOp -> U.Register -> U.Register -> ExprTEval U.X86Code
+compareStrings (A.EQU _) tmp1 tmp2 = do
+  let pushSecondArgument = U.instrToCode $ U.Push $ U.Reg tmp2
+  let pushFirstArgument = U.instrToCode $ U.Push $ U.Reg tmp1
+  let callUtilsMethod = U.instrToCode $ U.Call U.helperStringsEqual
+  let popArguments = U.popToNothing <> U.popToNothing
+  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
+  return $ pushReturnValue <> popArguments <> callUtilsMethod <> pushFirstArgument <> pushSecondArgument
+compareStrings _ _ _ = undefined
 
-addStrings :: Register -> Register -> ExprTEval U.X86Code
-addStrings = undefined
+-- Cmp x1 x2
+-- j cnmpFalse
+-- code if comparison is true
+-- cmpFalse:
+-- skipFalse
 
-compareStrings :: A.RelOp -> Register -> Register -> ExprTEval U.X86Code
-compareStrings = undefined
+compareValuesHelper :: String -> (String -> U.Asm) -> ExprTEval U.X86Code
+compareValuesHelper hint jumpIfComparisonIsFalseCreator = do
+  labelFalse <- getNewLabel $ hint ++ "false"
+  skipFalse <- getNewLabel $ hint ++ "skip"
+  let jumpIfComparisonIsFalse = U.instrsToCode [jumpIfComparisonIsFalseCreator labelFalse]
+  let codeIfComparisonWasTrue = U.instrsToCode [U.Push (U.Constant 1), U.Jmp skipFalse]
+  let labelFalseCode = U.instrToCode $ U.Label labelFalse
+  let codeIfComparisonWasFalse = U.instrToCode $ U.Push $ U.Constant 0
+  let labelSkipFalseCode = U.instrToCode $ U.Label skipFalse
+  return $ labelSkipFalseCode <> codeIfComparisonWasFalse <> labelFalseCode <> codeIfComparisonWasTrue <> jumpIfComparisonIsFalse
 
 compareValues :: A.RelOp -> ExprTEval U.X86Code
-compareValues (A.EQU) = do
-  l <- getNewLabel "equ"
-  jz 
+compareValues (A.EQU _) = compareValuesHelper "equ" U.Jne
+compareValues (A.NE _) = compareValuesHelper "ne" U.Je
+compareValues (A.LE _) = compareValuesHelper "le" U.Ja
+compareValues (A.GE _) = compareValuesHelper "ge" U.Jb
+compareValues (A.LTH _) = compareValuesHelper "lth" U.Jae
+compareValues (A.GTH _) = compareValuesHelper "gth" U.Jbe
 
-addIntCode :: Register -> Register -> ExprTEval U.X86Code
-addIntCode tmp1 tmp2 = do
-  let addRegisters = U.instrsToCode $ [U.Add (U.Reg tmp1) (U.Reg tmp2)]
-  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return $ pushResult <> addRegisters <> popValuesToTmpRegisters
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
 evalExpr (A.ERel _ e1 erel e2) = do
-  (t1, t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
+  (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType e1 e2
   case t1 of
     A.TStr _ -> do
       compareStringsCode <- compareStrings erel tmp1 tmp2
       return (compareStringsCode <> valuesInRegistersCode, A.TBool noPos)
     _ -> do
-      let cmpRegisters = U.instrsToCode $ [U.Cmp (U.Reg tmp1) (U.Reg tmp2)]
-
-
-
-
+      let cmpRegisters = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Reg tmp2)]
+      compareValuesCode <- compareValues erel
+      return (compareValuesCode <> cmpRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.EAdd _ e1 (A.Minus _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
-  let subRegisters = U.instrsToCode $ [U.Sub (U.Reg tmp1) (U.Reg tmp2)]
+  let subRegisters = U.instrsToCode [U.Sub (U.Reg tmp1) (U.Reg tmp2)]
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return $ pushResult <> subRegisters <> valuesInRegistersCode
+  return (pushResult <> subRegisters <> valuesInRegistersCode, A.TInt noPos)
 evalExpr (A.EAdd _ e1 (A.Plus _) e2) = do
-  (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType
+  (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType e1 e2
   case t1 of
-    A.TStr _ -> do 
+    A.TStr _ -> do
       addStringsCode <- addStrings tmp1 tmp2
-      return $ (addStrings <> valuesInRegistersCode, t1)
+      return (addStringsCode <> valuesInRegistersCode, t1)
     A.TInt _ -> do
-      addIntCode <- addInt
+      addIntCode <- addInt tmp1 tmp2
       return (addIntCode <> valuesInRegistersCode, t1)
     _ -> undefined
-
+  where
+    addInt :: U.Register -> U.Register -> ExprTEval U.X86Code
+    addInt tmp1 tmp2 = do
+      let addRegisters = U.instrsToCode [U.Add (U.Reg tmp1) (U.Reg tmp2)]
+      let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+      return $ pushResult <> addRegisters
 evalExpr (A.EMul _ e1 (A.Mod _) e2) = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
-  let popDivisorToEcx = U.instrsToCode $ [U.Pop "ecx"]
-  let popDividentToEax = U.instrsToCode $ [U.Pop $ U.Reg "eax"]
-  let prepareEdxValue = U.instrsToCode $ [U.Mov (U.Reg "edx") (U.Reg "eax"), U.Sar 31] 
-  let divRegisters = U.instrToCode $ U.Idiv (U.Reg "ecx)
+  let popDivisorToEcx = U.instrsToCode [U.Pop $ U.Reg "ecx"]
+  let popDividentToEax = U.instrsToCode [U.Pop $ U.Reg "eax"]
+  let prepareEdxValue = U.instrsToCode [U.Mov (U.Reg "edx") (U.Reg "eax"), U.Sar 31]
+  let divRegisters = U.instrToCode $ U.Idiv (U.Reg "ecx")
   let pushResult = U.instrToCode $ U.Push $ U.Reg "edx"
   return (pushResult <> divRegisters <> prepareEdxValue <> popDividentToEax <> popDivisorToEcx <> e2Code <> e1Code, A.TInt noPos)
 evalExpr (A.EMul _ e1 (A.Div _) e2) = do
   (e1Code, _) <- evalExpr e1
   (e2Code, _) <- evalExpr e2
-  let popDivisorToEcx = U.instrsToCode $ [U.Pop "ecx"]
-  let popDividentToEax = U.instrsToCode $ [U.Pop $ U.Reg "eax"]
-  let prepareEdxValue = U.instrsToCode $ [U.Mov (U.Reg "edx") (U.Reg "eax"), U.Sar 31] 
-  let divRegisters = U.instrToCode $ U.Idiv (U.Reg "ecx)
+  let popDivisorToEcx = U.instrsToCode [U.Pop $ U.Reg "ecx"]
+  let popDividentToEax = U.instrsToCode [U.Pop $ U.Reg "eax"]
+  let prepareEdxValue = U.instrsToCode [U.Mov (U.Reg "edx") (U.Reg "eax"), U.Sar 31]
+  let divRegisters = U.instrToCode $ U.Idiv (U.Reg "ecx")
   let pushResult = U.instrToCode $ U.Push $ U.Reg "eax"
   return (pushResult <> divRegisters <> prepareEdxValue <> popDividentToEax <> popDivisorToEcx <> e2Code <> e1Code, A.TInt noPos)
 evalExpr (A.EMul _ e1 (A.Times _) e2) = do
   (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
   let mulRegisters = U.instrToCode $ U.Imul (U.Reg tmp1) (U.Reg tmp2)
-  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1  
+  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
   return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
 evalExpr (A.EOr _ e1 e2) = do
   -- TODO implement short circuit
@@ -251,7 +280,7 @@ evalExpr (A.EApp _ f exprs) = do
   let pushAllArgumentsToTheStack = mconcat $ map fst result
   let callF = U.instrToCode $ U.Call $ printTree f
   let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
-  let pushReturnValue = U.instrsToCode $ [U.Push $ U.Reg U.resultRegister]
+  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
   return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EString _ s) = do
   newStringLabel <- getNewLabel "stringLit"
@@ -299,7 +328,7 @@ writeArgumentsToTypesMap :: [A.Type] -> [A.UIdent] -> M.Map A.UIdent A.Type -> M
 writeArgumentsToTypesMap types idents currMap = foldl (\m (ident, t) -> M.insert ident t m) currMap $ zip idents types
 
 generateCode :: A.Stmt -> StmtTEval U.X86Code
-generateCode (A.SEmpty _) = return $ mempty
+generateCode (A.SEmpty _) = return mempty
 generateCode (A.SBStmt _ (A.SBlock _ stmts)) = do
   env <- get
   code <- mconcat <$> mapM generateCode stmts

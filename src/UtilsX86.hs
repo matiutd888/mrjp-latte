@@ -23,7 +23,30 @@ instance Monoid X86Code where
   mempty = X86Code $ DList.fromList []
 
 -- Intel syntax
-data Asm = Return | Label String | Push Operand | Mov Operand Operand | Sub Operand Operand | Add Operand Operand | Pop Operand | Cmp Operand Operand | Je String | Jmp String | Call String | Neg Operand | Xor Operand Operand | And Operand Operand | Or Operand Operand | Imul Operand Operand | Idiv Operand | Sar Integer
+data Asm
+  = Return
+  | Label String
+  | Push Operand
+  | Mov Operand Operand
+  | Sub Operand Operand
+  | Add Operand Operand
+  | Pop Operand
+  | Cmp Operand Operand
+  | Je String
+  | Jmp String
+  | Call String
+  | Neg Operand
+  | Xor Operand Operand
+  | And Operand Operand
+  | Or Operand Operand
+  | Imul Operand Operand
+  | Idiv Operand
+  | Sar Integer
+  | Jne String
+  | Ja String
+  | Jb String
+  | Jae String
+  | Jbe String
 
 type Register = String
 
@@ -83,3 +106,9 @@ resultRegister = "eax"
 
 registersAll :: [Register]
 registersAll = stackRegister : frameRegister : registersStandard
+
+helperConcatStrings :: String
+helperConcatStrings = "concat_strings"
+
+helperStringsEqual :: String
+helperStringsEqual = "compare_strings"

@@ -27,3 +27,4 @@ char *concat_strings(const char *str1, const char *str2) {
     return result;
 }
 
+bool compare_strings(const char *str1, const char *str2);
