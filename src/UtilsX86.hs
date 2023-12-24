@@ -73,6 +73,9 @@ data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringCons
 
 --
 
+instrToString :: Asm -> String
+instrToString = undefined
+
 popToNothing :: X86Code
 popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]
 

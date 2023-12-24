@@ -12,6 +12,7 @@ import qualified Data.Bool as A
 import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import qualified Data.DList as U
+import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Maybe as DM
@@ -469,6 +470,7 @@ compileFunction name idents body = do
   env <- get
   let (A.TFun _ _retType argTypes) = eFunctions env M.! name
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
+  let funLabel = U.instrToCode $ U.Label $ printTree name
   let funPrologue = prologue numberOfBytesForLocals
   let funEpilogue = epilogue
   let funLabelWriter =
@@ -491,17 +493,31 @@ compileFunction name idents body = do
   put newEnv
   code <- generateCode (A.SBStmt noPos body)
   put env
-  return $ funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue
+  return $ funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined
 
-compileTopDef :: A.TopDef -> StmtTEval String
-compileTopDef (A.TopFuncDef _ (A.FunDefT _ _retType _uident _args _block)) = undefined
-compileTopDef _ = undefined
+codeToStr :: U.X86Code -> String
+codeToStr code =
+  let cLines = map U.instrToString $ reverse $ DList.toList (codeLines code)
+   in intercalate "\n" cLines
 
-compileProgram :: A.Program -> StmtTEval String
-compileProgram _ = undefined
+compileProgram :: A.Program -> StmtTEval U.X86Code
+compileProgram (A.ProgramT _ topdefs) = do
+  classesDefCodeList <- mapM compileClassTopDef topdefs
+  let classesDefCode = mconcat classesDefCodeList
+  funDefCodeList <- mapM compileFunctionTopDef topdefs
+  let funDefCode = mconcat funDefCodeList
+  return $ funDefCode <> classesDefCode
+  where
+    compileClassTopDef :: A.TopDef -> StmtTEval U.X86Code
+    compileClassTopDef A.TopClassDef {} = undefined
+    compileClassTopDef _ = return mempty
+
+    compileFunctionTopDef :: A.TopDef -> StmtTEval U.X86Code
+    compileFunctionTopDef (A.TopFuncDef _ (A.FunDefT _ _ name args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileFunction name argNames block
+    compileFunctionTopDef _ = return mempty
 
 -- where
 --   compileAndAppendFunction :: String -> A.UIdent -> StmtTEval String
@@ -518,4 +534,4 @@ runStmtTEval :: Env -> StmtTEval a -> IO (Either String (a, Env))
 runStmtTEval env e = runExceptT (runStateT e env)
 
 runCompileProgram :: M.Map A.UIdent A.Type -> M.Map A.UIdent ClassType -> A.Program -> IO (Either String (String, Env))
-runCompileProgram functions classes p = runStmtTEval (initEnv functions classes) (compileProgram p)
+runCompileProgram functions classes p = runStmtTEval (initEnv functions classes) (codeToStr <$> compileProgram p)
