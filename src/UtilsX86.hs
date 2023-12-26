@@ -52,7 +52,7 @@ operandToString :: Operand -> String
 operandToString (Reg register) = "%" ++ register
 operandToString (SimpleMem reg int) = show int ++ " (%" ++ reg ++ ")"
 operandToString (Constant int) = "$" ++ show int
-operandToString (StringConstant s) = "$" ++ show s
+operandToString (StringConstant s) = "$" ++ s
 
 helperI2Str2Operands :: String -> Operand -> Operand -> String
 helperI2Str2Operands s o1 o2 = indent ++ s ++ " " ++ operandToString o1 ++ ", " ++ operandToString o2
@@ -78,8 +78,8 @@ instrToString (Cmp x y) = helperI2Str2Operands "cmp" y x
 instrToString (Je x) = helperI2Str1String "je" x
 instrToString (Jmp x) = helperI2Str1String "jmp" x
 instrToString (Call x) = helperI2Str1String "call" x
-instrToString (Neg x) = helperI2Str1Operand "neg" x
-instrToString (Xor x y) = helperI2Str2Operands "xor" y x
+instrToString (Neg x) = helperI2Str1Operand "negl" x
+instrToString (Xor x y) = helperI2Str2Operands "xorl" y x
 instrToString (And x y) = helperI2Str2Operands "and" y x
 instrToString (Or x y) = helperI2Str2Operands "or" y x
 instrToString (Imul x y) = helperI2Str2Operands "imul" y x

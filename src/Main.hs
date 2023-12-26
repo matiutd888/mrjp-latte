@@ -72,6 +72,7 @@ createBinaryFromGASFile :: FilePath -> IO ()
 createBinaryFromGASFile filePath = do
   let outputFile = dropExtension filePath
   let command = "gcc -m32 -o " ++ outputFile ++ " " ++ filePath ++ " " ++ runtimeObjectfile
+  putStrLn command
   (_, _, _, processHandle) <- createProcess (shell command)
   exitCode <- waitForProcess processHandle
   case exitCode of
