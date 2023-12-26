@@ -17,7 +17,7 @@ src/Grammar/AbsLatte.hs: Latte.cf
 	rm -rf src/Grammar/TestLatte.hs
 
 lib/runtime.o: lib-sources/runtime.h lib-sources/runtime.c
-	gcc -c lib-sources/runtime.c -o lib/runtime.o
+	gcc -m32 -c lib-sources/runtime.c -o lib/runtime.o
 	
 
 latc_x86: src/*.hs Grammar lib/runtime.o
@@ -38,7 +38,7 @@ clean:
 
 create_archieve:
 	rm -rf mn418323.tgz
-	tar cf mn418323.tgz --exclude='src/Grammar' src lib lib-sources Makefile Latte.cf
+	tar cf mn418323.tgz --exclude='src/Grammar' src lib-sources Makefile Latte.cf
 	mkdir -p testing-archieve
 	rm -rf testing-archieve/*
 	cp mn418323.tgz testing-archieve/
