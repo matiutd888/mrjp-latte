@@ -86,6 +86,8 @@ instrToString (Jb x) = helperI2Str1String "jb" x
 instrToString (Jae x) = helperI2Str1String "jae" x
 instrToString (Jbe x) = helperI2Str1String "jbe" x
 instrToString (Lea x y) = helperI2Str2Operands "lea" y x
+instrToString Newline = "\n\n"
+instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ str ++ "\""
 
 -- Intel syntax
 data Asm
@@ -113,6 +115,8 @@ data Asm
   | Jae String
   | Jbe String
   | Lea Operand Operand
+  | Newline
+  | StringConstantDeclaration String String
 
 popToNothing :: X86Code
 popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]

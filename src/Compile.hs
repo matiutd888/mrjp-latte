@@ -9,6 +9,7 @@ import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Bool as A
+import Data.DList (cons)
 import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import qualified Data.DList as U
@@ -24,6 +25,7 @@ import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
+import Text.ParserCombinators.ReadP (string)
 import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
@@ -492,8 +494,8 @@ compileFunction name idents body = do
           }
   put newEnv
   code <- generateCode (A.SBStmt noPos body)
-  put env
-  return $ funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel
+
+  return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> U.instrsToCode [U.Newline]
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined
@@ -509,7 +511,9 @@ compileProgram (A.ProgramT _ topdefs) = do
   let classesDefCode = mconcat classesDefCodeList
   funDefCodeList <- mapM compileFunctionTopDef topdefs
   let funDefCode = mconcat funDefCodeList
-  return $ funDefCode <> classesDefCode
+  stringConstants <- gets $ M.toList . eStringConstants
+  let constantsCode = mconcat $ map createStringConstantInCode stringConstants
+  return $ funDefCode <> classesDefCode <> constantsCode
   where
     compileClassTopDef :: A.TopDef -> StmtTEval U.X86Code
     compileClassTopDef A.TopClassDef {} = undefined
@@ -518,6 +522,9 @@ compileProgram (A.ProgramT _ topdefs) = do
     compileFunctionTopDef :: A.TopDef -> StmtTEval U.X86Code
     compileFunctionTopDef (A.TopFuncDef _ (A.FunDefT _ _ name args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileFunction name argNames block
     compileFunctionTopDef _ = return mempty
+
+    createStringConstantInCode :: (String, String) -> U.X86Code
+    createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
 
 -- where
 --   compileAndAppendFunction :: String -> A.UIdent -> StmtTEval String
