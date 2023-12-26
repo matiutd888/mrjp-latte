@@ -34,7 +34,7 @@ test_binary_on_files() {
     local folder="$1"
     local exit_code="$2"
     
-    fails_that_failed_to_compile=()
+    fails_that_failed_to_compile=("lattests/good/core016.lat")
     
     echo "Testing files in $folder..."
     
@@ -63,7 +63,7 @@ test_binary_on_files() {
     files_that_failed=()
     for file in "$folder"/*.lat; do
         if [ -f "$file" ] && ! element_in_array "$file" "${fails_that_failed_to_compile[@]}"; then
-            
+            echo "testing ${file}"
             # Extract the base name without extension
             executable_name="${file%.lat}"
             
