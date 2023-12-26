@@ -51,7 +51,7 @@ char *readString() {
 
 int readInt() {
     int n;
-    scanf("%d", &n);
+    scanf("%d\n", &n);
     return n;
 }
 
