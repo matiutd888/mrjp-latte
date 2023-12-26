@@ -64,10 +64,13 @@ runFile v p f = do
   createBinaryFromGASFile outputFilePath
   return ()
 
+runtimeObjectfile :: String
+runtimeObjectfile = "lib/runtime.o"
+
 createBinaryFromGASFile :: FilePath -> IO ()
 createBinaryFromGASFile filePath = do
   let outputFile = dropExtension filePath
-  let command = "gcc -m32 -o " ++ outputFile ++ " " ++ filePath
+  let command = "gcc -m32 -o " ++ outputFile ++ " " ++ filePath ++ " " ++ runtimeObjectfile
   (_, _, _, processHandle) <- createProcess (shell command)
   exitCode <- waitForProcess processHandle
   case exitCode of
@@ -78,15 +81,16 @@ run :: Verbosity -> ParseFun Program -> String -> IO String
 run v p s =
   case p ts of
     Left err -> do
+      hPutStrLn stderr "ERROR"
       hPutStrLn stderr "\nParse              Failed...\n"
       putStrV v "Tokens:"
       mapM_ (putStrV v . showPosToken . mkPosToken) ts
       putStrLn err
       exitFailure
     Right tree -> do
-      putStrLn "\nParse Successful!"
-      showTree v tree
-      putStrLn "\n"
+      -- putStrLn "\nParse Successful!"
+      -- showTree v tree
+      -- putStrLn "\n"
       getLLFileContent tree
   where
     ts = myLexer s
@@ -95,14 +99,14 @@ run v p s =
     getLLFileContent prog = do
       let semAnalysisResult = SA.runSemanticAnalysis prog
       case semAnalysisResult of
-        Left m -> hPutStrLn stderr "SEMANTIC ANALYSIS ERROR " >> hPutStrLn stderr m >> exitFailure
+        Left m -> hPutStrLn stderr "ERROR" >> hPutStrLn stderr m >> exitFailure
         Right (_, environment) -> do
           let f = SA.functions environment
           let c = SA.classes environment
           compilationResult <- C.runCompileProgram f c prog
           case compilationResult of
-            Left m -> hPutStrLn stderr "COMPILING STAGE ERROR " >> hPutStrLn stderr m >> exitFailure
-            Right (pStr, _) -> return pStr
+            Left m -> hPutStrLn stderr "COMPILING STAGE ERROR" >> hPutStrLn stderr m >> exitFailure
+            Right (pStr, _) -> hPutStrLn stderr "OK" >> return pStr
 
 -- llFileContent <- runExceptT $ getLLFile prog
 -- case llFileContent of
