@@ -197,10 +197,10 @@ compareValuesHelper hint jumpIfComparisonIsFalseCreator = do
 compareValues :: A.RelOp -> ExprTEval U.X86Code
 compareValues (A.EQU _) = compareValuesHelper "equ" U.Jne
 compareValues (A.NE _) = compareValuesHelper "ne" U.Je
-compareValues (A.LE _) = compareValuesHelper "le" U.Ja
-compareValues (A.GE _) = compareValuesHelper "ge" U.Jb
-compareValues (A.LTH _) = compareValuesHelper "lth" U.Jae
-compareValues (A.GTH _) = compareValuesHelper "gth" U.Jbe
+compareValues (A.LE _) = compareValuesHelper "le" U.Jg
+compareValues (A.GE _) = compareValuesHelper "ge" U.Jl
+compareValues (A.LTH _) = compareValuesHelper "lth" U.Jge
+compareValues (A.GTH _) = compareValuesHelper "gth" U.Jle
 
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
 evalExpr (A.EVar _ x) = do

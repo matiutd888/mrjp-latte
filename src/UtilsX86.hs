@@ -86,10 +86,10 @@ instrToString (Imul x y) = helperI2Str2Operands "imul" y x
 instrToString (Idiv x) = helperI2Str1Operand "idiv" x
 instrToString (Sar x y) = helperI2Str2Operands "sar" y x
 instrToString (Jne x) = helperI2Str1String "jne" x
-instrToString (Ja x) = helperI2Str1String "ja" x
-instrToString (Jb x) = helperI2Str1String "jb" x
-instrToString (Jae x) = helperI2Str1String "jae" x
-instrToString (Jbe x) = helperI2Str1String "jbe" x
+instrToString (Jg x) = helperI2Str1String "jg" x
+instrToString (Jl x) = helperI2Str1String "jl" x
+instrToString (Jge x) = helperI2Str1String "jge" x
+instrToString (Jle x) = helperI2Str1String "jle" x
 instrToString (Lea x y) = helperI2Str2Operands "lea" y x
 instrToString Newline = "\n\n"
 instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ str ++ "\""
@@ -116,10 +116,10 @@ data Asm
   | Idiv Operand
   | Sar Operand Operand
   | Jne String
-  | Ja String
-  | Jb String
-  | Jae String
-  | Jbe String
+  | Jg String
+  | Jl String
+  | Jge String
+  | Jle String
   | Lea Operand Operand
   | Newline
   | StringConstantDeclaration String String
