@@ -21,6 +21,7 @@ import Data.Text.Internal.Fusion (Step (Done))
 import Data.Text.Internal.Fusion.Size (Size)
 import qualified Data.Text.Lazy as T
 import Data.Text.Lazy.Builder (toLazyText)
+import Debug.Trace
 import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
@@ -44,7 +45,7 @@ data LabelWriter = LWriter
   }
 
 labelReturn :: LabelWriter -> String
-labelReturn (LWriter f c _) = c ++ "$" ++ f ++ "return"
+labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
 
 getNewLabel :: String -> StmtTEval String
 getNewLabel hint = do
@@ -64,7 +65,7 @@ getNewLabel hint = do
         }
 
     getLabel :: LabelWriter -> String -> String
-    getLabel l customHint = lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l) ++ "$" ++ customHint
+    getLabel l customHint = "label" ++ lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l) ++ "$" ++ customHint
 
 data Env = Env
   { eCurrClass :: Maybe A.UIdent,
@@ -338,7 +339,7 @@ generateCode :: A.Stmt -> StmtTEval U.X86Code
 generateCode (A.SEmpty _) = return mempty
 generateCode (A.SBStmt _ (A.SBlock _ stmts)) = do
   env <- get
-  code <- mconcat <$> mapM generateCode stmts
+  code <- mconcat . reverse <$> mapM generateCode stmts
   newEnv <- get
   put $
     newEnv
@@ -467,12 +468,16 @@ getLValueAddressOnStack (A.EVar _ ident) = do
   return $ pushAddress <> moveToRegister
 getLValueAddressOnStack _ = undefined
 
+dupa :: StmtTEval ()
+dupa = return ()
+
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunction name idents body = do
   env <- get
   let (A.TFun _ _retType argTypes) = eFunctions env M.! name
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
   let funLabel = U.instrToCode $ U.Label $ printTree name
+  let globalHeader = if printTree name == "main" then U.instrToCode U.GlobalHeader else U.instrsToCode []
   let funPrologue = prologue numberOfBytesForLocals
   let funEpilogue = epilogue
   let funLabelWriter =
@@ -493,9 +498,10 @@ compileFunction name idents body = do
             eVarTypes = funLocalTypes
           }
   put newEnv
+
   code <- generateCode (A.SBStmt noPos body)
 
-  return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> U.instrsToCode [U.Newline]
+  return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
 
 compileClass :: A.UIdent -> StmtTEval String
 compileClass = undefined
@@ -505,8 +511,11 @@ codeToStr code =
   let cLines = map U.instrToString $ reverse $ DList.toList (codeLines code)
    in intercalate "\n" cLines
 
+-- compileProgram x = return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
+
 compileProgram :: A.Program -> StmtTEval U.X86Code
 compileProgram (A.ProgramT _ topdefs) = do
+  -- return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
   classesDefCodeList <- mapM compileClassTopDef topdefs
   let classesDefCode = mconcat classesDefCodeList
   funDefCodeList <- mapM compileFunctionTopDef topdefs
@@ -525,17 +534,6 @@ compileProgram (A.ProgramT _ topdefs) = do
 
     createStringConstantInCode :: (String, String) -> U.X86Code
     createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
-
--- where
---   compileAndAppendFunction :: String -> A.UIdent -> StmtTEval String
---   compileAndAppendFunction acc fun = do
---     compiledFunCode <- compileFunction fun
---     return $ compiledFunCode ++ acc
-
---   compileAndAppendClass :: String -> A.UIdent -> StmtTEval String
---   compileAndAppendClass acc fun = do
---     compiledClassCode <- compileClass fun
---     return $ compiledClassCode ++ acc
 
 runStmtTEval :: Env -> StmtTEval a -> IO (Either String (a, Env))
 runStmtTEval env e = runExceptT (runStateT e env)

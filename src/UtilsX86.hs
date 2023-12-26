@@ -7,16 +7,18 @@ module UtilsX86 where
 import Control.Exception
 import Data.DList (DList)
 import qualified Data.DList as DList
+import qualified Data.DList as DList.DList
 import Data.Text.Lazy.Builder
 import qualified Grammar.AbsLatte as A
 
 data X86Code = X86Code
   { codeLines :: DList.DList Asm
   }
+  deriving (Show)
 
 instance Semigroup X86Code where
   (<>) :: X86Code -> X86Code -> X86Code
-  (<>) (X86Code x) (X86Code y) = mappend (X86Code x) (X86Code y)
+  (<>) (X86Code x) (X86Code y) = X86Code (x `DList.append` y)
 
 instance Monoid X86Code where
   mempty :: X86Code
@@ -24,7 +26,7 @@ instance Monoid X86Code where
 
 type Register = String
 
-data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String
+data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String deriving (Show)
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -53,16 +55,19 @@ operandToString (Constant int) = "$" ++ show int
 operandToString (StringConstant s) = "$" ++ show s
 
 helperI2Str2Operands :: String -> Operand -> Operand -> String
-helperI2Str2Operands s o1 o2 = s ++ " " ++ operandToString o1 ++ ", " ++ operandToString o2
+helperI2Str2Operands s o1 o2 = indent ++ s ++ " " ++ operandToString o1 ++ ", " ++ operandToString o2
 
 helperI2Str1Operand :: String -> Operand -> String
-helperI2Str1Operand s o = s ++ " " ++ operandToString o
+helperI2Str1Operand s o = indent ++ s ++ " " ++ operandToString o
 
 helperI2Str1String :: String -> String -> String
-helperI2Str1String s o = s ++ " " ++ o
+helperI2Str1String s o = indent ++ s ++ " " ++ o
+
+indent :: String
+indent = "\t"
 
 instrToString :: Asm -> String
-instrToString Return = "ret"
+instrToString Return = indent ++ "ret"
 instrToString (Label s) = s ++ ":"
 instrToString (Push s) = helperI2Str1Operand "push" s
 instrToString (Mov dest src) = helperI2Str2Operands "mov" src dest
@@ -88,6 +93,7 @@ instrToString (Jbe x) = helperI2Str1String "jbe" x
 instrToString (Lea x y) = helperI2Str2Operands "lea" y x
 instrToString Newline = "\n\n"
 instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ str ++ "\""
+instrToString GlobalHeader = ".global main"
 
 -- Intel syntax
 data Asm
@@ -117,6 +123,8 @@ data Asm
   | Lea Operand Operand
   | Newline
   | StringConstantDeclaration String String
+  | GlobalHeader
+  deriving (Show)
 
 popToNothing :: X86Code
 popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]

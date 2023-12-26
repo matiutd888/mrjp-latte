@@ -55,13 +55,14 @@ getOutputFileFromInputFilePath filePath = dropExtension filePath <.> ".s"
 
 runFile :: Verbosity -> ParseFun Program -> FilePath -> IO ()
 runFile v p f = do
-  putStrLn f
   validateFilePath f
   programStr <- readFile f
   let outputFilePath = getOutputFileFromInputFilePath f
   programCodeStr <- run v p programStr
   writeStringToFile outputFilePath programCodeStr
   createBinaryFromGASFile outputFilePath
+  putStrLn f
+  putStrLn programCodeStr
   return ()
 
 runtimeObjectfile :: String
