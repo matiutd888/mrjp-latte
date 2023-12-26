@@ -15,12 +15,26 @@ else
     exit 1
 fi
 
+# Function to check if an element is in an array
+element_in_array() {
+    local target_element="$1"
+    shift  # Shift to remove the target element from the parameters
+
+    for element in "$@"; do
+        if [[ "$element" == "$target_element" ]]; then
+            return 0  # Element found
+        fi
+    done
+
+    return 1  # Element not found
+}
+
 # Function to test the binary on files in a given folder
 test_binary_on_files() {
     local folder="$1"
     local exit_code="$2"
 
-    selected_files=()
+    fails_that_failed_to_compile=()
 
     echo "Testing files in $folder..."
 
@@ -31,17 +45,61 @@ test_binary_on_files() {
                 echo "PASS: $file"
             else
                 echo "FAIL: $file"
-                selected_files+=("$file")
+                fails_that_failed_to_compile+=("$file")
             fi
         fi
     done
     
     # Print the selected files
     echo "##########################################"
-    echo "Files satisfying the condition:"
-    for selected_file in "${selected_files[@]}"; do
+    echo "Files that failed to compile:"
+    for selected_file in "${fails_that_failed_to_compile[@]}"; do
         echo "$selected_file"
     done
+
+    echo ""
+    echo "####################################################"
+    echo "EXECUTING FILES"
+    files_that_failed=()
+    for file in "$folder"/*.lat; do
+        if [ -f "$file" ] && element_in_array "$file" "${fails_that_failed_to_compile[@]}"; then
+    
+            # Extract the base name without extension
+            executable_name="${file%.lat}"
+
+            touch "${executable_name}.input"
+
+            ./"$executable_name" < "${executable_name}.input" > "${executable_name}.output_actual" 
+            
+            if [ "$?" -eq 0 ]; then
+                echo "Execution didnt fail: $file"
+
+                if diff -q "${executable_name}.output_actual" "${executable_name}.output" >/dev/null; then
+                    echo "PASS: $file"
+                    rm -f "${executable_name}.output_actual"
+
+                else
+                    echo "FAIL (missmatched output): $file"
+                    files_that_failed+=("$file")
+                fi
+                
+            else
+                echo "FAIL (exit code != 0): $file"
+                files_that_failed+=("$file")
+            fi
+            
+            
+
+    done
+    
+    echo "##########################################"
+    echo "Files that failed:"
+    for selected_file in "${files_that_failed[@]}"; do
+        echo "$selected_file"
+    done
+
+
+
     echo ""
 }
 
