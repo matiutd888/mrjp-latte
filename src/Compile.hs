@@ -263,17 +263,31 @@ evalExpr (A.EMul _ e1 (A.Times _) e2) = do
   let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
   return (pushResult <> mulRegisters <> valuesInRegistersCode, A.TInt noPos)
 evalExpr (A.EOr _ e1 e2) = do
-  -- TODO implement short circuit
-  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
-  let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
-  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return (pushResult <> orRegisters <> valuesInRegistersCode, A.TBool noPos)
+  lOrTrue <- getNewLabel "LOrTrue"
+  lOrEnd <- getNewLabel "lOrEnd"
+  c1 <- evalBooleanExprHelp lOrTrue 1 e1
+  c2 <- evalBooleanExprHelp lOrTrue 1 e2
+  let cFalse = U.instrsToCode [U.Push (U.Constant 0), U.Jmp lOrEnd]
+  let labelTrue = U.instrToCode $ U.Label lOrTrue
+  let cTrue = U.instrsToCode [U.Push $ U.Constant 1]
+  let labelEnd = U.instrToCode $ U.Label lOrEnd
+  return (labelEnd <> cTrue <> labelTrue <> cFalse <> c2 <> c1, A.TBool noPos)
+
+-- -- TODO implement short circuit
+-- (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
+-- let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
+-- let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
+-- return (pushResult <> orRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.EAnd _ e1 e2) = do
-  -- TODO implement short circuit
-  (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
-  let andRegisters = U.instrToCode $ U.And (U.Reg tmp1) (U.Reg tmp2)
-  let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
-  return (pushResult <> andRegisters <> valuesInRegistersCode, A.TBool noPos)
+  lAndFalse <- getNewLabel "LAndFalse"
+  lAndEnd <- getNewLabel "LAndEnd"
+  c1 <- evalBooleanExprHelp lAndFalse 0 e1
+  c2 <- evalBooleanExprHelp lAndFalse 0 e2
+  let cTrue = U.instrsToCode [U.Push (U.Constant 1), U.Jmp lAndEnd]
+  let labelFalse = U.instrToCode $ U.Label lAndFalse
+  let cFalse = U.instrsToCode [U.Push $ U.Constant 0]
+  let labelEnd = U.instrToCode $ U.Label lAndEnd
+  return (labelEnd <> cFalse <> labelFalse <> cTrue <> c2 <> c1, A.TBool noPos)
 evalExpr (A.Not _ e) = do
   (exprCode, t) <- evalExpr e
   let xorTopOfTheStack = U.instrToCode $ U.Xor (U.SimpleMem U.stackRegister 0) (U.Constant 1)
@@ -305,6 +319,15 @@ evalExpr A.EMemberCall {} = undefined
 evalExpr A.EMember {} = undefined
 evalExpr (A.ESelf _) = undefined
 evalExpr (A.ENewObject _ _) = undefined
+
+evalBooleanExprHelp :: String -> Int -> A.Expr -> StmtTEval U.X86Code
+evalBooleanExprHelp l value e = do
+  (eCode, _) <- liftExprTEval $ evalExpr e
+  tmp1 <- getTmpRegister
+  let popResultToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
+  let compareWithValue = U.instrsToCode [U.Cmp (U.Reg tmp1) (U.Constant value)]
+  let jumpToLabelIfEqual = U.instrsToCode [U.Je l]
+  return $ jumpToLabelIfEqual <> compareWithValue <> popResultToRegister <> eCode
 
 getNumberOfBytesForLocals :: A.Stmt -> Int
 getNumberOfBytesForLocals = fst . getNumberOfBytesForLocalsHelper 0 0
