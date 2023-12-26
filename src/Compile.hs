@@ -300,7 +300,7 @@ evalExpr (A.EApp _ f exprs) = do
   retType <- gets ((fromJust . M.lookup f) . eFunctions)
   let reverseExprs = reverse exprs
   result <- mapM evalExpr reverseExprs
-  let pushAllArgumentsToTheStack = mconcat $ map fst result
+  let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
   let callF = U.instrToCode $ U.Call $ printTree f
   let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
   let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]

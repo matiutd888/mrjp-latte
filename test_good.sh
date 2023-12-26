@@ -34,7 +34,7 @@ test_binary_on_files() {
     local folder="$1"
     local exit_code="$2"
     
-    fails_that_failed_to_compile=("lattests/good/core016.lat")
+    fails_that_failed_to_compile=()
     
     echo "Testing files in $folder..."
     
