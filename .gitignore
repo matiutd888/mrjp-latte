@@ -14,3 +14,4 @@ latc_x86
 lattest*
 dist-newstyle
 lib
+custom/*
