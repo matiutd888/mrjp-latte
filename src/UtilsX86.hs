@@ -9,6 +9,7 @@ import Data.DList (DList)
 import qualified Data.DList as DList
 import qualified Data.DList as DList.DList
 import Data.Text.Lazy.Builder
+import Debug.Trace
 import qualified Grammar.AbsLatte as A
 
 data X86Code = X86Code
@@ -92,8 +93,17 @@ instrToString (Jge x) = helperI2Str1String "jge" x
 instrToString (Jle x) = helperI2Str1String "jle" x
 instrToString (Lea x y) = helperI2Str2Operands "lea" y x
 instrToString Newline = "\n\n"
-instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ str ++ "\""
+instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ escapeString str ++ "\""
 instrToString GlobalHeader = ".global main"
+
+escapeString :: String -> String
+escapeString = concatMap escapeChar
+  where
+    escapeChar :: Char -> String
+    escapeChar '"' = "\\\""
+    escapeChar '\n' = "\\n"
+    escapeChar '\\' = "\\\\"
+    escapeChar c = c : ""
 
 -- Intel syntax
 data Asm
