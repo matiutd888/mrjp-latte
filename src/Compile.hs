@@ -175,6 +175,14 @@ compareStrings (A.EQU _) tmp1 tmp2 = do
   let popArguments = U.popToNothing <> U.popToNothing
   let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
   return $ pushReturnValue <> popArguments <> callUtilsMethod <> pushFirstArgument <> pushSecondArgument
+compareStrings (A.NE _) tmp1 tmp2 = do
+  let pushSecondArgument = U.instrToCode $ U.Push $ U.Reg tmp2
+  let pushFirstArgument = U.instrToCode $ U.Push $ U.Reg tmp1
+  let callUtilsMethod = U.instrToCode $ U.Call U.helperStringsEqual
+  let popArguments = U.popToNothing <> U.popToNothing
+  let xorResult = U.instrToCode $ U.Xor (U.Reg U.resultRegister) (U.Constant 1)
+  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
+  return $ pushReturnValue <> xorResult <> popArguments <> callUtilsMethod <> pushFirstArgument <> pushSecondArgument
 compareStrings _ _ _ = undefined
 
 -- Cmp x1 x2

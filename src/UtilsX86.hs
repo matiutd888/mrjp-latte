@@ -51,7 +51,11 @@ data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringCons
 
 operandToString :: Operand -> String
 operandToString (Reg register) = "%" ++ register
-operandToString (SimpleMem reg int) = show int ++ " (%" ++ reg ++ ")"
+operandToString (SimpleMem reg int) = showIntIfNeq0 int ++ " (%" ++ reg ++ ")"
+  where
+    showIntIfNeq0 :: Int -> String
+    showIntIfNeq0 0 = ""
+    showIntIfNeq0 x = show x
 operandToString (Constant int) = "$" ++ show int
 operandToString (StringConstant s) = "$" ++ s
 
