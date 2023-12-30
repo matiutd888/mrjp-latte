@@ -17,6 +17,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Maybe as DM
+import qualified Data.Set as S
 import Data.Text.Internal.Fusion (Step (Done))
 import Data.Text.Internal.Fusion.Size (Size)
 import qualified Data.Text.Lazy as T
@@ -27,8 +28,8 @@ import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
 import System.Posix.Internals (puts)
 import Text.ParserCombinators.ReadP (string)
-import Text.Read (Lexeme (String))
 import Utils
+import qualified Utils as A
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
 
@@ -67,8 +68,17 @@ getNewLabel hint = do
     getLabel :: LabelWriter -> String -> String
     getLabel l customHint = "label" ++ lClassName l ++ "$" ++ lFunName l ++ "$" ++ show (lCounter l) ++ "$" ++ customHint
 
+data ClassInMemory = CMem
+  { cAttrOffsets :: M.Map A.UIdent Loc,
+    funIndexInVTable :: M.Map A.UIdent Loc,
+    vTableLocationOffset :: Loc,
+    sizeOfLocalVars :: Int,
+    vTableLabel :: String
+  }
+
 data Env = Env
-  { eCurrClass :: Maybe A.UIdent,
+  { eCurrClass :: Maybe (A.UIdent, Loc),
+    eClassesLayout :: M.Map A.UIdent ClassInMemory,
     eClasses :: M.Map A.UIdent ClassType,
     eFunctions :: M.Map A.UIdent A.Type,
     eVarLocs :: M.Map A.UIdent Loc, -- Location relative to ebp
@@ -84,6 +94,7 @@ initEnv functions classes =
     { eCurrClass = Nothing,
       eClasses = classes,
       eFunctions = functions,
+      eClassesLayout = M.empty,
       eVarLocs = M.empty,
       eVarTypes = M.empty,
       eWriter = LWriter "" "" 0,
@@ -514,7 +525,7 @@ compileFunction name idents body = do
   let funLabelWriter =
         LWriter
           { lFunName = printTree name,
-            lClassName = maybe "" printTree (eCurrClass env),
+            lClassName = maybe "" printTree (fst <$> eCurrClass env),
             lCounter = 1
           }
 
@@ -534,7 +545,7 @@ compileFunction name idents body = do
 
   return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
 
-compileClass :: A.UIdent -> StmtTEval String
+compileClass :: M.Map A.UIdent A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
 compileClass = undefined
 
 codeToStr :: U.X86Code -> String
@@ -542,13 +553,27 @@ codeToStr code =
   let cLines = map U.instrToString $ reverse $ DList.toList (codeLines code)
    in intercalate "\n" cLines
 
+getClassesInTopologicalOrder :: M.Map A.UIdent ClassType -> [A.UIdent]
+getClassesInTopologicalOrder classesMap = reverse $ getClassesInTopologicalOrderHelper S.empty [] classesMap
+  where
+    getClassesInTopologicalOrderHelper usedAlready ret m =
+      if M.null m
+        then ret
+        else
+          let (classesToAdd, remaining) = M.partition doesntExtendsOrExtendsSomethingIn m
+           in let classesToAddSet = M.keysSet classesToAdd
+               in getClassesInTopologicalOrderHelper (S.union classesToAddSet usedAlready) (S.toList classesToAddSet ++ ret) remaining
+      where
+        doesntExtendsOrExtendsSomethingIn :: ClassType -> Bool
+        doesntExtendsOrExtendsSomethingIn ClassType {baseClass = Nothing} = True
+        doesntExtendsOrExtendsSomethingIn ClassType {baseClass = Just x} = S.member x usedAlready
+
 -- compileProgram x = return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
 
 compileProgram :: A.Program -> StmtTEval U.X86Code
 compileProgram (A.ProgramT _ topdefs) = do
   -- return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
-  classesDefCodeList <- mapM compileClassTopDef topdefs
-  let classesDefCode = mconcat classesDefCodeList
+  classesDefCode <- compileClasses $ DM.mapMaybe filterClasses topdefs
   funDefCodeList <- mapM compileFunctionTopDef topdefs
   let funDefCode = mconcat funDefCodeList
   stringConstants <- gets $ M.toList . eStringConstants
@@ -565,6 +590,26 @@ compileProgram (A.ProgramT _ topdefs) = do
 
     createStringConstantInCode :: (String, String) -> U.X86Code
     createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
+
+    compileClasses :: [A.ClassDef] -> StmtTEval U.X86Code
+    compileClasses classesDefs = do
+      env <- get
+      let classesInTopologicalOrder = getClassesInTopologicalOrder (eClasses env)
+      let classesDefsMap = createClassDefsMap classesDefs
+      codeList <- mapM (compileClass classesDefsMap) classesInTopologicalOrder
+      let concatedCode = mconcat codeList
+      return concatedCode
+
+    createClassDefsMap :: [A.ClassDef] -> M.Map A.UIdent A.ClassDef
+    createClassDefsMap = createClassDefsMapHelper M.empty
+      where
+        createClassDefsMapHelper res [] = res
+        createClassDefsMapHelper acc (p@(A.ClassExtDefT _ ident _ _) : t) = createClassDefsMapHelper (M.insert ident p acc) t
+        createClassDefsMapHelper acc (p@(A.ClassDefT _ ident _) : t) = createClassDefsMapHelper (M.insert ident p acc) t
+
+    filterClasses :: A.TopDef -> Maybe A.ClassDef
+    filterClasses (A.TopClassDef _ x) = Just x
+    filterClasses _ = Nothing
 
 runStmtTEval :: Env -> StmtTEval a -> IO (Either String (a, Env))
 runStmtTEval env e = runExceptT (runStateT e env)
