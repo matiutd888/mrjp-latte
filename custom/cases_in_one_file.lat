@@ -1,0 +1,40 @@
+/* Test boolean operators */
+
+int main () {
+  int x;
+  {
+    int x, y = 10;
+    {
+      int y;
+      int z = 2137;
+    }
+    assert(x, 0);
+    x = 13;
+    assert(x, 13);
+    y = 26;
+    assert(y, 26);
+  }
+  assert(x, 0);
+
+  string a = "alamakota";
+  assertString("ala" + "ma" + "kota", a);
+  
+  int c = 3;
+  c+1;
+  (c);
+  int z = (2 + 2) * 3;
+  int d = 2 * (c + z);
+  return 0;
+}
+
+void assertString(string actual, string expected) {
+  if (actual != expected) {
+    error();
+  }
+}
+
+void assert(int actual, int expected) {
+  if (actual != expected) {
+    error();
+  }
+}
