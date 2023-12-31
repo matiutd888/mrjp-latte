@@ -48,6 +48,9 @@ data LabelWriter = LWriter
 labelReturn :: LabelWriter -> String
 labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
 
+labelVTable :: String -> String
+labelVTable className = "label" ++ className ++ "$" ++ "vTable"
+
 getNewLabel :: String -> StmtTEval String
 getNewLabel hint = do
   env <- get
@@ -70,10 +73,11 @@ getNewLabel hint = do
 
 data ClassInMemory = CMem
   { cAttrOffsets :: M.Map A.UIdent Loc,
-    funIndexInVTable :: M.Map A.UIdent Loc,
-    vTableLocationOffset :: Loc,
-    sizeOfLocalVars :: Int,
-    vTableLabel :: String
+    cfunIndexInVTable :: M.Map A.UIdent Int,
+    cVTableLocationOffset :: Loc,
+    cVTableLabel :: String,
+    cNumberOfVTableEntries :: Int,
+    cOffsetSize :: Int
   }
 
 data Env = Env
@@ -545,8 +549,87 @@ compileFunction name idents body = do
 
   return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
 
-compileClass :: M.Map A.UIdent A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
-compileClass = undefined
+-- data ClassInMemory = CMem
+--   { cAttrOffsets :: M.Map A.UIdent Loc,
+--     funIndexInVTable :: M.Map A.UIdent Loc,
+--     vTableLocationOffset :: Loc,
+--     sizeOfLocalVars :: Int,
+--     vTableLabel :: String,
+
+--   }
+
+-- data Env = Env
+--   { eCurrClass :: Maybe (A.UIdent, Loc),
+--     eClassesLayout :: M.Map A.UIdent ClassInMemory,
+--     eClasses :: M.Map A.UIdent ClassType,
+--     eFunctions :: M.Map A.UIdent A.Type,
+--     eVarLocs :: M.Map A.UIdent Loc, -- Location relative to ebp
+--     eVarTypes :: M.Map A.UIdent A.Type,
+--     eWriter :: LabelWriter,
+--     eLocalVarsBytesCounter :: Int,
+--     eStringConstants :: M.Map String String
+--   }
+
+sizeOfVTablePointer :: Loc
+sizeOfVTablePointer = 4
+
+createClassMemoryLayout :: A.UIdent -> StmtTEval ClassInMemory
+createClassMemoryLayout c = do
+  parentLayout <- gets ((M.lookup c) . eClassesLayout)
+  createClassMemoryLayoutHelper parentLayout c
+  where
+    createClassMemoryLayoutHelper :: Maybe ClassInMemory -> A.UIdent -> StmtTEval ClassInMemory
+    createClassMemoryLayoutHelper Nothing x = do
+      let vTableLabel = labelVTable (printTree x)
+      let vTableLocationOffset = 0
+      cType <- gets ((fromJust . M.lookup x) . eClasses)
+      let (attrOffsets, offsetSize) = fillLocalVarsOffsets sizeOfVTablePointer (cAttrs cType)
+      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods 0 M.empty (cFuncs cType)
+      let ret =
+            CMem
+              { cAttrOffsets = attrOffsets,
+                cNumberOfVTableEntries = numberOfEntriesInVTable,
+                cVTableLabel = vTableLabel,
+                cVTableLocationOffset = vTableLocationOffset,
+                cfunIndexInVTable = vTableIndexes,
+                cOffsetSize = offsetSize
+              }
+      return ret
+    createClassMemoryLayoutHelper (Just parentLayout) x = do
+      let vTableLabel = labelVTable (printTree x)
+      let vTableLocationOffset = 0
+      cType <- gets ((fromJust . M.lookup x) . eClasses)
+      let (attrOffsets, offsetSize) = fillLocalVarsOffsets (cOffsetSize parentLayout) (cAttrs cType)
+      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (cNumberOfVTableEntries parentLayout) (cfunIndexInVTable parentLayout) (cFuncs cType)
+      let ret =
+            CMem
+              { cAttrOffsets = attrOffsets,
+                cNumberOfVTableEntries = numberOfEntriesInVTable,
+                cVTableLabel = vTableLabel,
+                cVTableLocationOffset = vTableLocationOffset,
+                cfunIndexInVTable = vTableIndexes,
+                cOffsetSize = offsetSize
+              }
+      return ret
+
+    fillLocalVarsOffsets :: Loc -> M.Map A.UIdent A.Type -> (M.Map A.UIdent Loc, Loc)
+    fillLocalVarsOffsets startingOffset localVars = M.foldrWithKey addVariable (M.empty, startingOffset) localVars
+      where
+        addVariable :: A.UIdent -> A.Type -> (M.Map A.UIdent Loc, Loc) -> (M.Map A.UIdent Loc, Loc)
+        addVariable ident t (m, l) =
+          let sizeOfVar = U.sizeOfTypeBytes t
+           in (M.insert ident l m, l + sizeOfVar)
+    assignIndexesToClassMethods :: Int -> M.Map A.UIdent Int -> M.Map A.UIdent A.Type -> (Int, M.Map A.UIdent Int)
+    assignIndexesToClassMethods initialIndex initialFunctionsIndexes functionsToAdd = foldl addFunction (initialIndex, initialFunctionsIndexes) (M.keys functionsToAdd)
+      where
+        addFunction :: (Int, M.Map A.UIdent Int) -> A.UIdent -> (Int, M.Map A.UIdent Int)
+        addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent currIndex currMap)
+
+compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
+compileClass c classMembers = do
+  env <- get
+  classMemoryLayout <- createClassMemoryLayout c
+  undefined
 
 codeToStr :: U.X86Code -> String
 codeToStr code =
@@ -580,13 +663,13 @@ compileProgram (A.ProgramT _ topdefs) = do
   let constantsCode = mconcat $ map createStringConstantInCode stringConstants
   return $ funDefCode <> classesDefCode <> constantsCode
   where
-    compileClassTopDef :: A.TopDef -> StmtTEval U.X86Code
-    compileClassTopDef A.TopClassDef {} = undefined
-    compileClassTopDef _ = return mempty
-
     compileFunctionTopDef :: A.TopDef -> StmtTEval U.X86Code
     compileFunctionTopDef (A.TopFuncDef _ (A.FunDefT _ _ name args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileFunction name argNames block
     compileFunctionTopDef _ = return mempty
+
+    compileClassDef :: A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
+    compileClassDef (A.ClassDefT _ x classMembers) ident = compileClass ident classMembers
+    compileClassDef (A.ClassExtDefT _ x _ classMembers) ident = compileClass ident classMembers
 
     createStringConstantInCode :: (String, String) -> U.X86Code
     createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
@@ -596,7 +679,7 @@ compileProgram (A.ProgramT _ topdefs) = do
       env <- get
       let classesInTopologicalOrder = getClassesInTopologicalOrder (eClasses env)
       let classesDefsMap = createClassDefsMap classesDefs
-      codeList <- mapM (compileClass classesDefsMap) classesInTopologicalOrder
+      codeList <- mapM (\x -> compileClassDef (fromJust $ M.lookup x classesDefsMap) x) classesInTopologicalOrder
       let concatedCode = mconcat codeList
       return concatedCode
 
