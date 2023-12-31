@@ -549,27 +549,6 @@ compileFunction name idents body = do
 
   return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
 
--- data ClassInMemory = CMem
---   { cAttrOffsets :: M.Map A.UIdent Loc,
---     funIndexInVTable :: M.Map A.UIdent Loc,
---     vTableLocationOffset :: Loc,
---     sizeOfLocalVars :: Int,
---     vTableLabel :: String,
-
---   }
-
--- data Env = Env
---   { eCurrClass :: Maybe (A.UIdent, Loc),
---     eClassesLayout :: M.Map A.UIdent ClassInMemory,
---     eClasses :: M.Map A.UIdent ClassType,
---     eFunctions :: M.Map A.UIdent A.Type,
---     eVarLocs :: M.Map A.UIdent Loc, -- Location relative to ebp
---     eVarTypes :: M.Map A.UIdent A.Type,
---     eWriter :: LabelWriter,
---     eLocalVarsBytesCounter :: Int,
---     eStringConstants :: M.Map String String
---   }
-
 sizeOfVTablePointer :: Loc
 sizeOfVTablePointer = 4
 
