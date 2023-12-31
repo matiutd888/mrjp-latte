@@ -522,7 +522,7 @@ getLValueAddressOnStack (A.EVar _ ident) = do
 getLValueAddressOnStack _ = undefined
 
 compileClassFunction :: A.UIdent -> A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
-compileClassFunction className fName idents body = do
+compileClassFunction _className _fName _idents _body = do
   -- TODO think about how to make code between compileFunction and compileClassFunctionCommon
   undefined
 
@@ -629,6 +629,10 @@ compileClass c classMembers = do
     compileClassMethod (A.ClassMethodT _ (A.FunDefT _ _ fname args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileClassFunction c fname argNames block
     compileClassMethod _ = return mempty
 
+-- TODO run postprocessing
+-- 1. remove add / sub  by $0
+-- 2. remove div / imul by $1
+-- 3. push x; pop register -> mov x, register
 codeToStr :: U.X86Code -> String
 codeToStr code =
   let cLines = map U.instrToString $ reverse $ DList.toList (codeLines code)
