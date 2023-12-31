@@ -44,6 +44,7 @@ data LabelWriter = LWriter
     lClassName :: String,
     lCounter :: Int
   }
+  deriving (Show)
 
 labelReturn :: LabelWriter -> String
 labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
@@ -79,6 +80,7 @@ data ClassInMemory = CMem
     cNumberOfVTableEntries :: Int,
     cOffsetSize :: Int
   }
+  deriving (Show)
 
 data Env = Env
   { eCurrClass :: Maybe (A.UIdent, Loc),
@@ -91,6 +93,7 @@ data Env = Env
     eLocalVarsBytesCounter :: Int,
     eStringConstants :: M.Map String String
   }
+  deriving (Show)
 
 initEnv :: M.Map A.UIdent A.Type -> M.Map A.UIdent ClassType -> Env
 initEnv functions classes =
@@ -514,9 +517,6 @@ getLValueAddressOnStack (A.EVar _ ident) = do
   return $ pushAddress <> moveToRegister
 getLValueAddressOnStack _ = undefined
 
-dupa :: StmtTEval ()
-dupa = return ()
-
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunction name idents body = do
   env <- get
@@ -552,13 +552,19 @@ compileFunction name idents body = do
 sizeOfVTablePointer :: Loc
 sizeOfVTablePointer = 4
 
-createClassMemoryLayout :: A.UIdent -> StmtTEval ClassInMemory
-createClassMemoryLayout c = do
-  parentLayout <- gets ((M.lookup c) . eClassesLayout)
-  createClassMemoryLayoutHelper parentLayout c
+createAndPutInEnvClassMemoryLayout :: A.UIdent -> StmtTEval ()
+createAndPutInEnvClassMemoryLayout c = do
+  parentLayout <- gets (M.lookup c . eClassesLayout)
+  cMem <- createAndPutInEnvClassMemoryLayoutHelper parentLayout c
+  env <- get
+  put $
+    env
+      { eClassesLayout = M.insert c cMem (eClassesLayout env)
+      }
+  return ()
   where
-    createClassMemoryLayoutHelper :: Maybe ClassInMemory -> A.UIdent -> StmtTEval ClassInMemory
-    createClassMemoryLayoutHelper Nothing x = do
+    createAndPutInEnvClassMemoryLayoutHelper :: Maybe ClassInMemory -> A.UIdent -> StmtTEval ClassInMemory
+    createAndPutInEnvClassMemoryLayoutHelper Nothing x = do
       let vTableLabel = labelVTable (printTree x)
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
@@ -574,7 +580,7 @@ createClassMemoryLayout c = do
                 cOffsetSize = offsetSize
               }
       return ret
-    createClassMemoryLayoutHelper (Just parentLayout) x = do
+    createAndPutInEnvClassMemoryLayoutHelper (Just parentLayout) x = do
       let vTableLabel = labelVTable (printTree x)
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
@@ -605,9 +611,7 @@ createClassMemoryLayout c = do
         addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent currIndex currMap)
 
 compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
-compileClass c classMembers = do
-  env <- get
-  classMemoryLayout <- createClassMemoryLayout c
+compileClass _c _classMembers = do
   undefined
 
 codeToStr :: U.X86Code -> String
@@ -647,8 +651,8 @@ compileProgram (A.ProgramT _ topdefs) = do
     compileFunctionTopDef _ = return mempty
 
     compileClassDef :: A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
-    compileClassDef (A.ClassDefT _ x classMembers) ident = compileClass ident classMembers
-    compileClassDef (A.ClassExtDefT _ x _ classMembers) ident = compileClass ident classMembers
+    compileClassDef (A.ClassDefT _ _ classMembers) ident = compileClass ident classMembers
+    compileClassDef (A.ClassExtDefT _ _ _ classMembers) ident = compileClass ident classMembers
 
     createStringConstantInCode :: (String, String) -> U.X86Code
     createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
@@ -657,6 +661,8 @@ compileProgram (A.ProgramT _ topdefs) = do
     compileClasses classesDefs = do
       env <- get
       let classesInTopologicalOrder = getClassesInTopologicalOrder (eClasses env)
+      debug $ "classes in topological order " ++ show classesInTopologicalOrder
+      mapM_ createAndPutInEnvClassMemoryLayout classesInTopologicalOrder
       let classesDefsMap = createClassDefsMap classesDefs
       codeList <- mapM (\x -> compileClassDef (fromJust $ M.lookup x classesDefsMap) x) classesInTopologicalOrder
       let concatedCode = mconcat codeList

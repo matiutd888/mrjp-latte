@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import qualified Data.Map as M
 import Data.Text.Lazy.Builder
+import Debug.Trace (trace)
 import Grammar.AbsLatte as A
 import System.Exit (exitFailure)
 import System.FilePath
@@ -62,6 +63,11 @@ typesEq _ _ = False
 
 noPos :: A.BNFC'Position
 noPos = A.BNFC'NoPosition
+
+debug :: Monad m => String -> m ()
+debug x = trace x dupa
+  where
+    dupa = return ()
 
 -- Build in functions
 printString :: A.TopDef
