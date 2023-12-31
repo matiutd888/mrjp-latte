@@ -344,7 +344,11 @@ evalExpr A.ECastNull {} = undefined
 evalExpr A.EMemberCall {} = undefined
 evalExpr A.EMember {} = undefined
 evalExpr (A.ESelf _) = undefined
-evalExpr (A.ENewObject _ _) = undefined
+evalExpr (A.ENewObject _ _) = do
+  -- TODO initialize local attributes
+  -- Load in offset 0 address of vtableForThisClass
+
+  undefined
 
 evalBooleanExprHelp :: String -> Int -> A.Expr -> StmtTEval U.X86Code
 evalBooleanExprHelp l value e = do
