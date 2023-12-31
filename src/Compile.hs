@@ -517,6 +517,11 @@ getLValueAddressOnStack (A.EVar _ ident) = do
   return $ pushAddress <> moveToRegister
 getLValueAddressOnStack _ = undefined
 
+compileClassFunction :: A.UIdent -> A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
+compileClassFunction className fName idents body = do
+  -- TODO think about how to make code between compileFunction and compileClassFunctionCommon
+  undefined
+
 compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunction name idents body = do
   env <- get
@@ -611,8 +616,14 @@ createAndPutInEnvClassMemoryLayout c = do
         addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent currIndex currMap)
 
 compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
-compileClass _c _classMembers = do
-  undefined
+compileClass c classMembers = do
+  funDefCodeList <- mapM compileClassMethod classMembers
+  let funDefCode = mconcat funDefCodeList
+  return funDefCode
+  where
+    compileClassMethod :: A.ClassMember -> StmtTEval U.X86Code
+    compileClassMethod (A.ClassMethodT _ (A.FunDefT _ _ fname args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileClassFunction c fname argNames block
+    compileClassMethod _ = return mempty
 
 codeToStr :: U.X86Code -> String
 codeToStr code =
