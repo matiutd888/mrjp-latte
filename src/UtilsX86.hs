@@ -96,6 +96,7 @@ instrToString (Lea x y) = helperI2Str2Operands "lea" y x
 instrToString Newline = "\n\n"
 instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ escapeString str ++ "\""
 instrToString GlobalHeader = ".global main"
+instrToString (CallIndirect o) = helperI2Str1String "call" $ "*" ++ operandToString o
 
 escapeString :: String -> String
 escapeString = concatMap escapeChar
@@ -119,6 +120,7 @@ data Asm
   | Je String
   | Jmp String
   | Call String
+  | CallIndirect Operand
   | Neg Operand
   | Xor Operand Operand
   | And Operand Operand

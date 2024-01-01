@@ -42,7 +42,13 @@ main:
 	push %ebp
 	mov %esp, %ebp
 	mov $0, %edi
-	call *.customlabel(,%edi,4)
+	; mov .customlabel, %esi
+    lea .customlabel, %esi
+    push %esi
+    mov (%esp), %esi
+
+
+    call *(%esi,%edi,4)
     push $0
 	pop %eax
 	jmp label$mainreturn

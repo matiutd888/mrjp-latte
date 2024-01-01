@@ -13,7 +13,6 @@ import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
-import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -322,7 +321,7 @@ evalExpr (A.Neg _ e) = do
   let negateValue = U.instrToCode $ U.Neg $ U.SimpleMem U.stackRegister 0
   return (negateValue <> exprCode, t)
 evalExpr (A.EApp _ f exprs) = do
-  retType <- gets ((fromJust . M.lookup f) . eFunctions)
+  A.TFun _ retType _ <- gets ((fromJust . M.lookup f) . eFunctions)
   let reverseExprs = reverse exprs
   result <- mapM evalExpr reverseExprs
   let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
@@ -364,9 +363,36 @@ evalExpr (A.ELitTrue _) = return (U.instrsToCode [U.Push $ U.Constant 1], A.TBoo
 -- }
 -- deriving (Show)
 
-evalExpr A.ECastNull {} = undefined
-evalExpr A.EMemberCall {} = undefined
-evalExpr A.EMember {} = undefined
+evalExpr (A.ECastNull _ c) = return (U.instrsToCode [U.Push $ U.Constant 0], A.TClass noPos c)
+evalExpr (A.EMemberCall _ e f exprs) = do
+  let reverseExprs = reverse exprs
+  result <- mapM evalExpr reverseExprs
+  let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
+
+  (exprCode, A.TClass _ className) <- evalExpr e
+
+  env <- get
+  let cLayout = eClassesLayout env M.! className
+  let cType = eClasses env M.! className
+  let A.TFun _ retType _ = cFuncs cType M.! f
+  tmp1 <- getTmpRegister
+  let movAddressOfVTableToRegister = U.instrToCode $ U.Mov (U.Reg tmp1) (U.SimpleMem U.stackRegister $ cVTableLocationOffset cLayout)
+  let indexOfFunction = cfunIndexInVTable cLayout M.! f
+  debug $ "Function " ++ printTree f ++ " index in vtable of class " ++ show className ++ ": " ++ show indexOfFunction
+  let callIndirect = U.instrsToCode $ [U.CallIndirect (U.SimpleMem tmp1 (indexOfFunction * sizeOfVTablePointer))]
+  let popArgumentsFromStack = mconcat $ replicate (length exprs + 1) U.popToNothing
+  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
+  return (pushReturnValue <> popArgumentsFromStack <> callIndirect <> movAddressOfVTableToRegister <> exprCode <> pushAllArgumentsToTheStack, retType)
+evalExpr (A.EMember _ e ident) = do
+  (exprCode, A.TClass _ className) <- evalExpr e
+  env <- get
+  let cLayout = eClassesLayout env M.! className
+  let cType = eClasses env M.! className
+  tmp1 <- getTmpRegister
+  let popAddressToRegister = U.instrToCode $ U.Pop (U.Reg tmp1)
+  let offset = cAttrOffsets cLayout M.! ident
+  let pushMemberValue = U.instrToCode $ U.Push (U.SimpleMem tmp1 offset)
+  return (pushMemberValue <> popAddressToRegister <> exprCode, (cAttrs cType) M.! ident)
 evalExpr (A.ESelf _) = do
   (currClassName, currClassLocation) <- gets (fromJust . eCurrClass)
   let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister currClassLocation]
@@ -376,9 +402,10 @@ evalExpr (A.ENewObject _ (A.TClass _ c)) = do
   let cMemoryLayout = eClassesLayout env M.! c
   let cData = eClasses env M.! c
   (codeThatCallsMalloc, registerWithClassAddress) <- allocMemoryForClass (cOffsetSize cMemoryLayout)
-  let codeThatFillsVTablePointer = fillVTablePointer (cVTableLabel cMemoryLayout) (cVTableLocationOffset cMemoryLayout) registerWithClassAddress
+  codeThatFillsVTablePointer <- fillVTablePointer (cVTableLabel cMemoryLayout) (cVTableLocationOffset cMemoryLayout) registerWithClassAddress
   let fillAttributesCode = mconcat $ map (handleOffset registerWithClassAddress cData) (M.toList (cAttrOffsets cMemoryLayout))
-  return (fillAttributesCode <> codeThatFillsVTablePointer <> codeThatCallsMalloc, A.TClass noPos c)
+  let pushAddress = U.instrToCode $ U.Push (U.Reg registerWithClassAddress)
+  return (pushAddress <> fillAttributesCode <> codeThatFillsVTablePointer <> codeThatCallsMalloc, A.TClass noPos c)
   where
     allocMemoryForClass :: Int -> StmtTEval (U.X86Code, U.Register)
     allocMemoryForClass sizeOfClass = do
@@ -386,8 +413,12 @@ evalExpr (A.ENewObject _ (A.TClass _ c)) = do
       let callUtilsMethod = U.instrToCode $ U.Call U.helperMalloc
       let popArgument = U.popToNothing
       return (popArgument <> callUtilsMethod <> pushSize, U.resultRegister)
-    fillVTablePointer :: String -> Int -> U.Register -> U.X86Code
-    fillVTablePointer vTableLabel offset classAddress = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) (U.OpLabel vTableLabel)]
+    fillVTablePointer :: String -> Int -> U.Register -> StmtTEval U.X86Code
+    fillVTablePointer vTableLabel offset classAddress = do
+      tmp1 <- getTmpRegister
+      let loadEffectiveAddressToRegister = U.instrToCode (U.Lea (U.Reg tmp1) (U.OpLabel vTableLabel))
+      let moveAddressToMemory = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) (U.Reg tmp1)]
+      return $ moveAddressToMemory <> loadEffectiveAddressToRegister
     fillValue :: Int -> A.Type -> U.Register -> U.X86Code
     fillValue offset t classAddress = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) $ getDefaultValueByType t]
       where
@@ -633,7 +664,7 @@ compileFunction fName idents body = do
   let (A.TFun _ _retType argTypes) = eFunctions env M.! fName
   compileFunctionHelper Nothing fName argTypes idents body
 
-sizeOfVTablePointer :: Loc
+sizeOfVTablePointer :: Int
 sizeOfVTablePointer = 4
 
 createAndPutInEnvClassMemoryLayout :: A.UIdent -> StmtTEval ()
@@ -733,6 +764,8 @@ getClassesInTopologicalOrder classesMap = reverse $ getClassesInTopologicalOrder
 
 compileProgram :: A.Program -> StmtTEval U.X86Code
 compileProgram (A.ProgramT _ topdefs) = do
+  env <- get
+  debug $ "initial Environment " ++ show env
   -- return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
   classesDefCode <- compileClasses $ DM.mapMaybe filterClasses topdefs
   funDefCodeList <- mapM compileFunctionTopDef topdefs
