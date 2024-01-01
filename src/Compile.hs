@@ -52,6 +52,13 @@ labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
 labelVTable :: String -> String
 labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
+labelFunction :: Maybe String -> String -> String
+labelFunction Nothing "main" = "main"
+labelFunction c f = DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
+
+defaultWriter :: LabelWriter
+defaultWriter = LWriter "" "" 0
+
 getNewLabel :: String -> StmtTEval String
 getNewLabel hint = do
   env <- get
@@ -104,7 +111,7 @@ initEnv functions classes =
       eClassesLayout = M.empty,
       eVarLocs = M.empty,
       eVarTypes = M.empty,
-      eWriter = LWriter "" "" 0,
+      eWriter = defaultWriter,
       eLocalVarsBytesCounter = 0,
       eStringConstants = M.empty
     }
@@ -327,7 +334,7 @@ evalExpr (A.EApp _ f exprs) = do
   let reverseExprs = reverse exprs
   result <- mapM evalExpr reverseExprs
   let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
-  let callF = U.instrToCode $ U.Call $ printTree f
+  let callF = U.instrToCode $ U.Call $ labelFunction Nothing $ printTree f
   let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
   let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
   return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
@@ -521,42 +528,64 @@ getLValueAddressOnStack (A.EVar _ ident) = do
   return $ pushAddress <> moveToRegister
 getLValueAddressOnStack _ = undefined
 
-compileClassFunction :: A.UIdent -> A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
-compileClassFunction _className _fName _idents _body = do
-  -- TODO think about how to make code between compileFunction and compileClassFunctionCommon
-  undefined
+cleanFunctionSpecificEnvVariables :: Env -> Env
+cleanFunctionSpecificEnvVariables env =
+  env
+    { eCurrClass = Nothing,
+      eVarLocs = M.empty,
+      eLocalVarsBytesCounter = 0,
+      eVarTypes = M.empty,
+      eWriter = defaultWriter
+    }
 
-compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
-compileFunction name idents body = do
+main :: String
+main = labelFunction Nothing "main"
+
+compileFunctionHelper :: Maybe String -> A.UIdent -> [A.Type] -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
+compileFunctionHelper maybeClassName fName argTypes idents body = do
   env <- get
-  let (A.TFun _ _retType argTypes) = eFunctions env M.! name
+  let codeFunName = labelFunction maybeClassName (printTree fName)
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
-  let funLabel = U.instrToCode $ U.Label $ printTree name
-  let globalHeader = if printTree name == "main" then U.instrToCode U.GlobalHeader else U.instrsToCode []
+  let globalHeader = if codeFunName == main then U.instrToCode U.GlobalHeader else U.instrsToCode []
+  let funLabel = U.instrToCode $ U.Label codeFunName
   let funPrologue = prologue numberOfBytesForLocals
   let funEpilogue = epilogue
   let funLabelWriter =
         LWriter
-          { lFunName = printTree name,
-            lClassName = maybe "" printTree (fst <$> eCurrClass env),
+          { lFunName = printTree fName,
+            lClassName = maybe "" (printTree . fst) (eCurrClass env),
             lCounter = 1
           }
-
-  let funLocations = writeArgumentsToLocationsMap argTypes idents M.empty
-  let funLocalTypes = writeArgumentsToTypesMap argTypes idents M.empty
+  let updatedIdents = maybe [] (const [self]) maybeClassName ++ idents
+  let updatedArgTypes = maybe [] ((: []) . A.TClass noPos . A.UIdent) maybeClassName ++ argTypes
+  let funLocations = writeArgumentsToLocationsMap updatedArgTypes updatedIdents M.empty
+  let funLocalTypes = writeArgumentsToTypesMap updatedArgTypes updatedIdents M.empty
   let funLocalVarsBytesCounter = 0
-  let newEnv =
+  let evalBodyEnv =
         env
-          { eVarLocs = funLocations,
+          { eCurrClass = (\className -> (A.UIdent className, funLocations M.! self)) <$> maybeClassName,
+            eVarLocs = funLocations,
+            eVarTypes = funLocalTypes,
             eWriter = funLabelWriter,
-            eLocalVarsBytesCounter = funLocalVarsBytesCounter,
-            eVarTypes = funLocalTypes
+            eLocalVarsBytesCounter = funLocalVarsBytesCounter
           }
-  put newEnv
-
+  put evalBodyEnv
   code <- generateCode (A.SBStmt noPos body)
-
+  modify cleanFunctionSpecificEnvVariables
   return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
+
+compileClassFunction :: A.UIdent -> A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
+compileClassFunction className fName idents body = do
+  env <- get
+  let cType = eClasses env M.! className
+  let (A.TFun _ _retType argTypes) = cFuncs cType M.! fName
+  compileFunctionHelper (Just $ printTree className) fName argTypes idents body
+
+compileFunction :: A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
+compileFunction fName idents body = do
+  env <- get
+  let (A.TFun _ _retType argTypes) = eFunctions env M.! fName
+  compileFunctionHelper Nothing fName argTypes idents body
 
 sizeOfVTablePointer :: Loc
 sizeOfVTablePointer = 4

@@ -69,6 +69,9 @@ debug x = trace x dupa
   where
     dupa = return ()
 
+self :: A.UIdent
+self = A.UIdent "self"
+
 -- Build in functions
 printString :: A.TopDef
 printString =
