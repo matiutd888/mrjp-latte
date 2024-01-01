@@ -425,6 +425,8 @@ getNumberOfBytesForLocals = fst . getNumberOfBytesForLocalsHelper 0 0
     getNumberOfBytesForLocalsHelper currMax currDecl (A.SCondElse _ _ s1 s2) =
       let res = map (getNumberOfBytesForLocalsHelper currMax currDecl) [s1, s2]
        in (maximum (map fst res), currDecl)
+    getNumberOfBytesForLocalsHelper currMax currDecl (A.SWhile _ _ s) =
+      let (newMax, _newDecl) = getNumberOfBytesForLocalsHelper currMax currDecl s in (newMax, currDecl)
     getNumberOfBytesForLocalsHelper x y _ = (x, y)
 
 writeArgumentsToLocationsMap :: [A.Type] -> [A.UIdent] -> M.Map A.UIdent Int -> M.Map A.UIdent Int
@@ -638,6 +640,7 @@ createAndPutInEnvClassMemoryLayout :: A.UIdent -> StmtTEval ()
 createAndPutInEnvClassMemoryLayout c = do
   parentLayout <- gets (M.lookup c . eClassesLayout)
   cMem <- createAndPutInEnvClassMemoryLayoutHelper parentLayout c
+  debug $ "class " ++ printTree c ++ " layout in memory: " ++ show cMem
   env <- get
   put $
     env
