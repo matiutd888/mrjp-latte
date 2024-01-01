@@ -5,7 +5,6 @@ module Compile where
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.DList as DList
-import qualified Data.DList as DM
 import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)

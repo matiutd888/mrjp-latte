@@ -19,12 +19,32 @@ int main () {
   string a = "alamakota";
   assertString("ala" + "ma" + "kota", a);
   
+  
   int c = 3;
   c+1;
-  (c);
+  c;
+  assert(fib(0), 0);
+  assert(fib(1), 1);
+  assert(fib(2), 1);
+  assert(fib(9), 34);
+  assert(fib(19), 4181);
+
   int z = (2 + 2) * 3;
   int d = 2 * (c + z);
   return 0;
+}
+
+int fib(int n) {
+    int first = 0, second = 1, next;
+    int i = 0;
+    while (i < n) {
+        int dupa;
+        next = first + second;
+        first = second;
+        second = next;
+        i++;
+    }
+    return first;
 }
 
 void assertString(string actual, string expected) {

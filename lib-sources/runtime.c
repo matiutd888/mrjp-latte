@@ -4,7 +4,6 @@ void *malloc_and_return_address(size_t size) {
     void *res = malloc(size);
     if (!res) {
         perror("malloc failed");
-        exit(1);
         exit(EXIT_FAILURE);
     }
     return res;
@@ -32,7 +31,8 @@ void printString(char *s) {
 }
 
 void error() {
-    fprintf(stderr, "runtime error\n");
+    fprintf(stderr, "runtime error");
+    exit(EXIT_FAILURE);
 }
 
 char *readString() {
