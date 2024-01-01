@@ -5,7 +5,6 @@ module Main where
 
 import qualified Compile as C
 import Control.Monad
-import Control.Monad.Except
 import Grammar.AbsLatte (Program)
 import Grammar.LexLatte (Token, mkPosToken)
 import Grammar.ParLatte (myLexer, pProgram)
@@ -14,22 +13,17 @@ import Grammar.SkelLatte ()
 import qualified SemanticAnalysis as SA
 import System.Environment (getArgs)
 import System.Exit
-import System.Exit (exitFailure)
 import System.FilePath
 import System.IO (hPutStrLn, stderr)
 import System.Process
-import Text.Read (Lexeme (String))
 import Utils
 import Prelude
   ( Either (..),
-    FilePath,
     IO,
     Int,
     Show,
     String,
     concat,
-    getContents,
-    mapM_,
     putStrLn,
     readFile,
     show,
@@ -37,10 +31,7 @@ import Prelude
     ($),
     (++),
     (.),
-    (==),
     (>),
-    (>>),
-    (>>=),
   )
 
 type ParseFun a = [Token] -> Either String a
