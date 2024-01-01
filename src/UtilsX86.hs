@@ -4,12 +4,7 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 module UtilsX86 where
 
-import Control.Exception
-import Data.DList (DList)
 import qualified Data.DList as DList
-import qualified Data.DList as DList.DList
-import Data.Text.Lazy.Builder
-import Debug.Trace
 import qualified Grammar.AbsLatte as A
 
 data X86Code = X86Code

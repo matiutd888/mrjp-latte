@@ -2,34 +2,17 @@
 
 module Compile where
 
-import qualified Control.Applicative as DM
-import Control.Arrow (Arrow (second))
 import Control.Monad.Except
-import Control.Monad.Identity
-import Control.Monad.Reader
 import Control.Monad.State
-import qualified Data.Bool as A
-import Data.DList (cons)
 import qualified Data.DList as DList
-import qualified Data.DList as DList.DList
-import qualified Data.DList as U
 import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
-import Data.Text.Internal.Fusion (Step (Done))
-import Data.Text.Internal.Fusion.Size (Size)
-import qualified Data.Text.Lazy as T
-import Data.Text.Lazy.Builder (toLazyText)
-import Debug.Trace
-import qualified GHC.Generics as U
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
-import System.Posix.Internals (puts)
-import Text.ParserCombinators.ReadP (string)
 import Utils
-import qualified Utils as A
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
 
@@ -54,7 +37,7 @@ labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
 labelFunction :: Maybe String -> String -> String
 labelFunction Nothing "main" = "main"
-labelFunction Nothing x = if (elem x U.helpers) then x else _labelFunctionHelper Nothing x
+labelFunction Nothing x = if elem x U.helpers then x else _labelFunctionHelper Nothing x
 labelFunction c x = _labelFunctionHelper c x
 
 _labelFunctionHelper :: Maybe String -> String -> String
