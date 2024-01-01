@@ -518,6 +518,7 @@ generateCode (A.SDecl _ t items) = foldM addDeclCode mempty items
         getDefaultValueExpressionByType (A.TInt _) = A.ELitInt noPos 0
         getDefaultValueExpressionByType (A.TStr _) = A.EString noPos ""
         getDefaultValueExpressionByType (A.TBool _) = A.ELitFalse noPos
+        getDefaultValueExpressionByType (A.TClass _ c) = A.ECastNull noPos c
         getDefaultValueExpressionByType _ = undefined
     handleItem (A.SInit _ ident expr) = do
       (exprCode, _) <- liftExprTEval (evalExpr expr)
@@ -610,6 +611,15 @@ getLValueAddressOnStack (A.EVar _ ident) = do
   moveToRegister <- moveLocalVariableAddressToRegister loc tmp
   let pushAddress = U.instrsToCode [U.Push $ U.Reg tmp]
   return $ pushAddress <> moveToRegister
+getLValueAddressOnStack (A.EMember _ expr ident) = do
+  (exprCode, A.TClass _ className) <- evalExpr expr
+  env <- get
+  let cLayout = eClassesLayout env M.! className
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let popAddressToRegister = U.instrToCode $ U.Pop (U.Reg tmp1)
+  let offset = cAttrOffsets cLayout M.! ident
+  let pushMemberAddress = U.instrToCode $ U.Lea (U.Reg tmp2) (U.SimpleMem tmp1 offset)
+  return (pushMemberAddress <> popAddressToRegister <> exprCode)
 getLValueAddressOnStack _ = undefined
 
 cleanFunctionSpecificEnvVariables :: Env -> Env
