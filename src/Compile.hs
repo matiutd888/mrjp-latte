@@ -227,10 +227,16 @@ compareValues (A.GTH _) = compareValuesHelper "gth" U.Jle
 
 evalExpr :: A.Expr -> ExprTEval (U.X86Code, A.Type)
 evalExpr (A.EVar _ x) = do
-  location <- gets (fromJust . M.lookup x . eVarLocs)
-  t <- gets (fromJust . M.lookup x . eVarTypes)
-  let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister location]
-  return (pushValue, t)
+  locationM <- gets (M.lookup x . eVarLocs)
+  case locationM of
+    Just l -> getLocalVar l
+    Nothing -> evalExpr (A.EMember noPos (A.ESelf noPos) x)
+  where
+    getLocalVar :: Loc -> ExprTEval (U.X86Code, A.Type)
+    getLocalVar location = do
+      t <- gets (fromJust . M.lookup x . eVarTypes)
+      let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister location]
+      return (pushValue, t)
 evalExpr (A.ERel _ e1 erel e2) = do
   (t1, _t2, valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegistersWithType e1 e2
   case t1 of
@@ -319,15 +325,22 @@ evalExpr (A.Neg _ e) = do
   (exprCode, t) <- evalExpr e
   let negateValue = U.instrToCode $ U.Neg $ U.SimpleMem U.stackRegister 0
   return (negateValue <> exprCode, t)
-evalExpr (A.EApp _ f exprs) = do
-  A.TFun _ retType _ <- gets ((fromJust . M.lookup f) . eFunctions)
-  let reverseExprs = reverse exprs
-  result <- mapM evalExpr reverseExprs
-  let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
-  let callF = U.instrToCode $ U.Call $ labelFunction Nothing $ printTree f
-  let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
-  let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
-  return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
+evalExpr (A.EApp _ fName expressions) = do
+  env <- get
+  let currClassFunction = (M.lookup fName . cfunIndexInVTable <$> ((eClassesLayout env) M.!)) . fst <$> (eCurrClass env)
+  case currClassFunction of
+    DM.Just (DM.Just _) -> evalExpr (A.EMemberCall noPos (A.ESelf noPos) fName expressions)
+    _ -> evalGlobalFunction fName expressions
+  where
+    evalGlobalFunction f exprs = do
+      A.TFun _ retType _ <- gets ((fromJust . M.lookup f) . eFunctions)
+      let reverseExprs = reverse exprs
+      result <- mapM evalExpr reverseExprs
+      let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
+      let callF = U.instrToCode $ U.Call $ labelFunction Nothing $ printTree f
+      let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
+      let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
+      return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EString _ s) = do
   label <- addLabelIfNotExist s
   -- TODO maybe put the constant on heap?
