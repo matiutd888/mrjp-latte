@@ -54,7 +54,11 @@ labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
 labelFunction :: Maybe String -> String -> String
 labelFunction Nothing "main" = "main"
-labelFunction c f = DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
+labelFunction Nothing x = if (elem x U.helpers) then x else _labelFunctionHelper Nothing x
+labelFunction c x = _labelFunctionHelper c x
+
+_labelFunctionHelper :: Maybe String -> String -> String
+_labelFunctionHelper c f = "f" ++ DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
 
 defaultWriter :: LabelWriter
 defaultWriter = LWriter "" "" 0

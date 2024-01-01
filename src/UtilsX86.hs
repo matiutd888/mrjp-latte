@@ -180,3 +180,6 @@ helperConcatStrings = "concat_strings"
 
 helperStringsEqual :: String
 helperStringsEqual = "compare_strings"
+
+helpers :: [String]
+helpers = [helperConcatStrings, helperStringsEqual, "readString", "readInt", "printString", "printInt", "error"]
