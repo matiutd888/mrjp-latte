@@ -5,10 +5,11 @@ module Compile where
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.DList as DList
-import Data.List (intercalate)
+import Data.List (intercalate, sortBy)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Maybe as DM
+import Data.Ord (comparing)
 import qualified Data.Set as S
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
@@ -772,17 +773,31 @@ compileProgram :: A.Program -> StmtTEval U.X86Code
 compileProgram (A.ProgramT _ topdefs) = do
   env <- get
   debug $ "initial Environment " ++ show env
+  let text = U.instrToCode U.Text
+  let dataLabel = U.instrToCode U.Data
   -- return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
   classesDefCode <- compileClasses $ DM.mapMaybe filterClasses topdefs
   funDefCodeList <- mapM compileFunctionTopDef topdefs
   let funDefCode = mconcat funDefCodeList
   stringConstants <- gets $ M.toList . eStringConstants
   let constantsCode = mconcat $ map createStringConstantInCode stringConstants
-  return $ funDefCode <> classesDefCode <> constantsCode
+  classesMemory <- gets $ M.toList . eClassesLayout
+  let vtables = mconcat $ reverse $ map (uncurry getVTable) classesMemory
+  return $ funDefCode <> classesDefCode <> text <> constantsCode <> vtables <> dataLabel
   where
     compileFunctionTopDef :: A.TopDef -> StmtTEval U.X86Code
     compileFunctionTopDef (A.TopFuncDef _ (A.FunDefT _ _ name args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileFunction name argNames block
     compileFunctionTopDef _ = return mempty
+
+    -- Function to sort a list of tuples by the second element
+    sortBySecond :: Ord b => [(a, b)] -> [(a, b)]
+    sortBySecond = sortBy (comparing snd)
+
+    getVTable :: A.UIdent -> ClassInMemory -> U.X86Code
+    getVTable className c =
+      let x = M.toList (cfunIndexInVTable c)
+       in let sorted = map (labelFunction (Just $ printTree className) . (printTree . fst)) (sortBySecond x)
+           in U.instrToCode $ U.VTable (cVTableLabel c) sorted
 
     compileClassDef :: A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
     compileClassDef (A.ClassDefT _ _ classMembers) ident = compileClass ident classMembers

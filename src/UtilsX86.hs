@@ -5,6 +5,7 @@
 module UtilsX86 where
 
 import qualified Data.DList as DList
+import Data.List (intercalate)
 import qualified Grammar.AbsLatte as A
 
 data X86Code = X86Code
@@ -97,6 +98,9 @@ instrToString Newline = "\n\n"
 instrToString (StringConstantDeclaration label str) = label ++ ":\n" ++ "\t.string\t" ++ "\"" ++ escapeString str ++ "\""
 instrToString GlobalHeader = ".global main"
 instrToString (CallIndirect o) = helperI2Str1String "call" $ "*" ++ operandToString o
+instrToString Text = ".text"
+instrToString Data = ".data"
+instrToString (VTable label fnames) = "\t" ++ label ++ ":" ++ "\n" ++ intercalate "\n" (map ("\t\t.long " ++) fnames)
 
 escapeString :: String -> String
 escapeString = concatMap escapeChar
@@ -136,6 +140,9 @@ data Asm
   | Lea Operand Operand
   | Newline
   | StringConstantDeclaration String String
+  | VTable String [String]
+  | Text
+  | Data
   | GlobalHeader
   deriving (Show)
 
