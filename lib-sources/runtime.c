@@ -1,6 +1,6 @@
 #include "runtime.h"
 
-inline void *malloc_and_return_address(size_t size) {
+void *malloc_and_return_address(size_t size) {
     void *res = malloc(size);
     if (!res) {
         perror("malloc failed");

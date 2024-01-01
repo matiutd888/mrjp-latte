@@ -5,6 +5,7 @@ module Compile where
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.DList as DList
+import qualified Data.DList as DM
 import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
@@ -12,6 +13,7 @@ import qualified Data.Maybe as DM
 import qualified Data.Set as S
 import qualified Grammar.AbsLatte as A
 import Grammar.PrintLatte (printTree)
+import Text.Read (Lexeme (String))
 import Utils
 import UtilsX86 (codeLines)
 import qualified UtilsX86 as U
@@ -37,11 +39,14 @@ labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
 labelFunction :: Maybe String -> String -> String
 labelFunction Nothing "main" = "main"
-labelFunction Nothing x = if elem x U.helpers then x else _labelFunctionHelper Nothing x
+labelFunction Nothing x = if x `elem` U.helpers then x else _labelFunctionHelper Nothing x
 labelFunction c x = _labelFunctionHelper c x
 
 _labelFunctionHelper :: Maybe String -> String -> String
 _labelFunctionHelper c f = "f" ++ DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
+
+labelEmptyStr :: String
+labelEmptyStr = "label$$$EmptystringLit"
 
 defaultWriter :: LabelWriter
 defaultWriter = LWriter "" "" 0
@@ -100,7 +105,7 @@ initEnv functions classes =
       eVarTypes = M.empty,
       eWriter = defaultWriter,
       eLocalVarsBytesCounter = 0,
-      eStringConstants = M.empty
+      eStringConstants = M.fromList [("", labelEmptyStr)]
     }
 
 getTmpRegister :: StmtTEval U.Register
@@ -326,23 +331,75 @@ evalExpr (A.EApp _ f exprs) = do
   let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
   return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EString _ s) = do
-  newStringLabel <- getNewLabel "stringLit"
-  env <- get
-  put $ env {eStringConstants = M.insert newStringLabel s (eStringConstants env)}
+  label <- addLabelIfNotExist s
   -- TODO maybe put the constant on heap?
-  return (U.instrsToCode [U.Push $ U.StringConstant newStringLabel], A.TStr noPos)
+  return (U.instrsToCode [U.Push $ U.StringConstant label], A.TStr noPos)
+  where
+    addLabelIfNotExist :: String -> StmtTEval String
+    addLabelIfNotExist stringConstant = do
+      stringConstants <- gets eStringConstants
+      if M.member stringConstant stringConstants then return (DM.fromJust $ M.lookup stringConstant stringConstants) else addNewLabel stringConstant
+
+    addNewLabel :: String -> StmtTEval String
+    addNewLabel stringConstant = do
+      newLabel <- getNewLabel "stringLit"
+      stringConstants <- gets eStringConstants
+      let newM = M.insert stringConstant newLabel stringConstants
+      env <- get
+      put $
+        env
+          { eStringConstants = newM
+          }
+      return newLabel
 evalExpr (A.ELitInt _ i) = return (U.instrsToCode [U.Push $ U.Constant $ fromIntegral i], A.TInt noPos)
 evalExpr (A.ELitFalse _) = return (U.instrsToCode [U.Push $ U.Constant 0], A.TBool noPos)
 evalExpr (A.ELitTrue _) = return (U.instrsToCode [U.Push $ U.Constant 1], A.TBool noPos)
+--   data ClassInMemory = CMem
+-- { cAttrOffsets :: M.Map A.UIdent Loc,
+--   cfunIndexInVTable :: M.Map A.UIdent Int,
+--   cVTableLocationOffset :: Loc,
+--   cVTableLabel :: String,
+--   cNumberOfVTableEntries :: Int,
+--   cOffsetSize :: Int
+-- }
+-- deriving (Show)
+
 evalExpr A.ECastNull {} = undefined
 evalExpr A.EMemberCall {} = undefined
 evalExpr A.EMember {} = undefined
-evalExpr (A.ESelf _) = undefined
-evalExpr (A.ENewObject _ _) = do
-  -- TODO initialize local attributes
-  -- Load in offset 0 address of vtableForThisClass
+evalExpr (A.ESelf _) = do
+  (currClassName, currClassLocation) <- gets (fromJust . eCurrClass)
+  let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister currClassLocation]
+  return (pushValue, A.TClass noPos currClassName)
+evalExpr (A.ENewObject _ (A.TClass _ c)) = do
+  env <- get
+  let cMemoryLayout = eClassesLayout env M.! c
+  let cData = eClasses env M.! c
+  (codeThatCallsMalloc, registerWithClassAddress) <- allocMemoryForClass (cOffsetSize cMemoryLayout)
+  let codeThatFillsVTablePointer = fillVTablePointer (cVTableLabel cMemoryLayout) (cVTableLocationOffset cMemoryLayout) registerWithClassAddress
+  let fillAttributesCode = mconcat $ map (handleOffset registerWithClassAddress cData) (M.toList (cAttrOffsets cMemoryLayout))
+  return (fillAttributesCode <> codeThatFillsVTablePointer <> codeThatCallsMalloc, A.TClass noPos c)
+  where
+    allocMemoryForClass :: Int -> StmtTEval (U.X86Code, U.Register)
+    allocMemoryForClass sizeOfClass = do
+      let pushSize = U.instrToCode $ U.Push (U.Constant sizeOfClass)
+      let callUtilsMethod = U.instrToCode $ U.Call U.helperMalloc
+      let popArgument = U.popToNothing
+      return (popArgument <> callUtilsMethod <> pushSize, U.resultRegister)
+    fillVTablePointer :: String -> Int -> U.Register -> U.X86Code
+    fillVTablePointer vTableLabel offset classAddress = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) (U.OpLabel vTableLabel)]
+    fillValue :: Int -> A.Type -> U.Register -> U.X86Code
+    fillValue offset t classAddress = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) $ getDefaultValueByType t]
+      where
+        getDefaultValueByType (A.TInt _) = U.Constant 0
+        getDefaultValueByType (A.TStr _) = U.StringConstant labelEmptyStr
+        getDefaultValueByType (A.TBool _) = U.Constant 0
+        getDefaultValueByType (A.TClass _ _) = U.Constant 0
+        getDefaultValueByType _ = undefined
 
-  undefined
+    handleOffset :: U.Register -> ClassType -> (A.UIdent, Int) -> U.X86Code
+    handleOffset classAddress cData (ident, offset) = let varType = cAttrs cData M.! ident in fillValue offset varType classAddress
+evalExpr (A.ENewObject _ _) = undefined
 
 evalBooleanExprHelp :: String -> Int -> A.Expr -> StmtTEval U.X86Code
 evalBooleanExprHelp l value e = do
@@ -690,7 +747,7 @@ compileProgram (A.ProgramT _ topdefs) = do
     compileClassDef (A.ClassExtDefT _ _ _ classMembers) ident = compileClass ident classMembers
 
     createStringConstantInCode :: (String, String) -> U.X86Code
-    createStringConstantInCode (label, constant) = U.instrToCode $ U.StringConstantDeclaration label constant
+    createStringConstantInCode (constant, label) = U.instrToCode $ U.StringConstantDeclaration label constant
 
     compileClasses :: [A.ClassDef] -> StmtTEval U.X86Code
     compileClasses classesDefs = do

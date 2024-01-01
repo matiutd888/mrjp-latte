@@ -22,7 +22,7 @@ instance Monoid X86Code where
 
 type Register = String
 
-data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String deriving (Show)
+data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String | OpLabel String deriving (Show)
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -53,6 +53,8 @@ operandToString (SimpleMem reg int) = showIntIfNeq0 int ++ " (%" ++ reg ++ ")"
     showIntIfNeq0 x = show x
 operandToString (Constant int) = "$" ++ show int
 operandToString (StringConstant s) = "$" ++ s
+-- TODO think about this
+operandToString (OpLabel s) = s
 
 helperI2Str2Operands :: String -> Operand -> Operand -> String
 helperI2Str2Operands s o1 o2 = indent ++ s ++ " " ++ operandToString o1 ++ ", " ++ operandToString o2
@@ -176,5 +178,8 @@ helperConcatStrings = "concat_strings"
 helperStringsEqual :: String
 helperStringsEqual = "compare_strings"
 
+helperMalloc :: String
+helperMalloc = "malloc_and_return_address"
+
 helpers :: [String]
-helpers = [helperConcatStrings, helperStringsEqual, "readString", "readInt", "printString", "printInt", "error"]
+helpers = [helperMalloc, helperConcatStrings, helperStringsEqual, "readString", "readInt", "printString", "printInt", "error"]
