@@ -301,12 +301,6 @@ evalExpr (A.EOr _ e1 e2) = do
   let cTrue = U.instrsToCode [U.Push $ U.Constant 1]
   let labelEnd = U.instrToCode $ U.Label lOrEnd
   return (labelEnd <> cTrue <> labelTrue <> cFalse <> c2 <> c1, A.TBool noPos)
-
--- -- TODO implement short circuit
--- (valuesInRegistersCode, tmp1, tmp2) <- getExpressionsValuesInRegisters e1 e2
--- let orRegisters = U.instrToCode $ U.Or (U.Reg tmp1) (U.Reg tmp2)
--- let pushResult = U.instrToCode $ U.Push $ U.Reg tmp1
--- return (pushResult <> orRegisters <> valuesInRegistersCode, A.TBool noPos)
 evalExpr (A.EAnd _ e1 e2) = do
   lAndFalse <- getNewLabel "LAndFalse"
   lAndEnd <- getNewLabel "LAndEnd"
