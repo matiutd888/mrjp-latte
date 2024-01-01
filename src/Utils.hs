@@ -8,10 +8,7 @@ import qualified Data.Map as M
 import Data.Text.Lazy.Builder
 import Debug.Trace (trace)
 import Grammar.AbsLatte as A
-import System.Exit (exitFailure)
-import System.FilePath
 import System.IO (IOMode (WriteMode), hPutStr, withFile)
-import qualified Text.Read as A
 
 data ClassType = ClassType
   { cAttrs :: M.Map A.UIdent A.Type,

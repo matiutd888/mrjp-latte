@@ -6,37 +6,21 @@
 
 module SemanticAnalysis where
 
-import Control.Exception (handle)
-import Control.Monad (foldM, when)
 import Control.Monad.Except
   ( ExceptT,
-    Monad (return, (>>), (>>=)),
     MonadError (throwError),
-    foldM,
-    foldM_,
     liftEither,
-    mapM_,
     runExceptT,
-    unless,
-    when,
   )
 import Control.Monad.Identity
-import Control.Monad.RWS (MonadState (get))
 import Control.Monad.Reader
 import Control.Monad.State
-import qualified Control.Monad.Trans.Accum as M
-import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
-import qualified Control.Monad.Trans.Maybe as A
 import qualified Data.Either as DE
 import Data.Functor as DF
 import qualified Data.Map as M
-import qualified Data.Maybe as A
 import qualified Data.Maybe as DM
 import qualified Data.Set as S
-import Debug.Trace
 import Errors
-import Foreign.C (throwErrno)
-import GHC.Base (undefined)
 import Grammar.AbsLatte (HasPosition (hasPosition))
 import qualified Grammar.AbsLatte as A
 import qualified Grammar.AbsLatte as E
