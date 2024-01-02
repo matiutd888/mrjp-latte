@@ -393,6 +393,7 @@ evalExpr (A.EMemberCall _ e f exprs) = do
 evalExpr (A.EMember _ e ident) = do
   (exprCode, A.TClass _ className) <- evalExpr e
   env <- get
+  debug $ "EMember, succesfully compiled " ++ show exprCode
   let cLayout = eClassesLayout env M.! className
   let cType = eClasses env M.! className
   tmp1 <- getTmpRegister
@@ -401,6 +402,7 @@ evalExpr (A.EMember _ e ident) = do
   let pushMemberValue = U.instrToCode $ U.Push (U.SimpleMem tmp1 offset)
   return (pushMemberValue <> popAddressToRegister <> exprCode, (cAttrs cType) M.! ident)
 evalExpr (A.ESelf _) = do
+  debug "comiling ESelf"
   (currClassName, currClassLocation) <- gets (fromJust . eCurrClass)
   let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister currClassLocation]
   return (pushValue, A.TClass noPos currClassName)
@@ -546,12 +548,15 @@ generateCode (A.SAss _ e1 e2) = do
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
   return $ movValueToLocation <> popValuesToTmpRegisters <> exprCode <> putOnStack
 generateCode (A.SIncr _ e) = do
+  debug "compiling sincr"
   putOnStack <- getLValueAddressOnStack e
+  debug $ "done putOnStack" ++ show putOnStack
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popAddressToRegister = U.instrsToCode [U.Pop (U.Reg tmp1)]
   let movValueToRegister = U.instrsToCode [U.Mov (U.Reg tmp2) (U.SimpleMem tmp1 0)]
   let incrementValue = U.instrsToCode [U.Add (U.Reg tmp2) (U.Constant 1)]
   let movValueToLocation = U.instrsToCode [U.Mov (U.SimpleMem tmp1 0) (U.Reg tmp2)]
+  debug $ "compiling sincr end" ++ (show $ movValueToLocation <> incrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack)
   return $ movValueToLocation <> incrementValue <> movValueToRegister <> popAddressToRegister <> putOnStack
 generateCode (A.SDecr _ e) = do
   putOnStack <- getLValueAddressOnStack e
@@ -605,12 +610,17 @@ generateCode (A.SExp _ e) = do
 
 getLValueAddressOnStack :: A.Expr -> StmtTEval U.X86Code
 getLValueAddressOnStack (A.EVar _ ident) = do
-  m <- gets eVarLocs
-  let loc = m M.! ident
-  tmp <- getTmpRegister
-  moveToRegister <- moveLocalVariableAddressToRegister loc tmp
-  let pushAddress = U.instrsToCode [U.Push $ U.Reg tmp]
-  return $ pushAddress <> moveToRegister
+  locationM <- gets (M.lookup ident . eVarLocs)
+  case locationM of
+    Just l -> getLocalVarAddressOnStack l
+    Nothing -> getLValueAddressOnStack (A.EMember noPos (A.ESelf noPos) ident)
+  where
+    getLocalVarAddressOnStack :: Loc -> StmtTEval U.X86Code
+    getLocalVarAddressOnStack loc = do
+      tmp <- getTmpRegister
+      moveToRegister <- moveLocalVariableAddressToRegister loc tmp
+      let pushAddress = U.instrsToCode [U.Push $ U.Reg tmp]
+      return $ pushAddress <> moveToRegister
 getLValueAddressOnStack (A.EMember _ expr ident) = do
   (exprCode, A.TClass _ className) <- evalExpr expr
   env <- get
@@ -639,6 +649,7 @@ main = labelFunction Nothing "main"
 compileFunctionHelper :: Maybe String -> A.UIdent -> [A.Type] -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunctionHelper maybeClassName fName argTypes idents body = do
   env <- get
+  debug $ "compiling function " ++ show fName
   let codeFunName = labelFunction maybeClassName (printTree fName)
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
   let globalHeader = if codeFunName == main then U.instrToCode U.GlobalHeader else U.instrsToCode []
@@ -656,6 +667,7 @@ compileFunctionHelper maybeClassName fName argTypes idents body = do
   let funLocations = writeArgumentsToLocationsMap updatedArgTypes updatedIdents M.empty
   let funLocalTypes = writeArgumentsToTypesMap updatedArgTypes updatedIdents M.empty
   let funLocalVarsBytesCounter = 0
+  debug "creating evalBodyEnv"
   let evalBodyEnv =
         env
           { eCurrClass = (\className -> (A.UIdent className, funLocations M.! self)) <$> maybeClassName,
@@ -665,8 +677,10 @@ compileFunctionHelper maybeClassName fName argTypes idents body = do
             eLocalVarsBytesCounter = funLocalVarsBytesCounter
           }
   put evalBodyEnv
+  debug $ "created evalBodyEnv" ++ show evalBodyEnv
   code <- generateCode (A.SBStmt noPos body)
   modify cleanFunctionSpecificEnvVariables
+  debug $ "compiled function " ++ show fName ++ "\n" ++ show code
   return $ U.instrsToCode [U.Newline] <> funEpilogue <> U.instrToCode (U.Label (labelReturn funLabelWriter)) <> code <> funPrologue <> funLabel <> globalHeader <> U.instrsToCode [U.Newline]
 
 compileClassFunction :: A.UIdent -> A.UIdent -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
@@ -746,8 +760,10 @@ createAndPutInEnvClassMemoryLayout c = do
 
 compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
 compileClass c classMembers = do
+  debug $ "compiling class " ++ printTree c
   funDefCodeList <- mapM compileClassMethod classMembers
   let funDefCode = mconcat funDefCodeList
+  debug $ "done compiling class " ++ printTree c ++ "\n" ++ show funDefCode
   return funDefCode
   where
     compileClassMethod :: A.ClassMember -> StmtTEval U.X86Code
@@ -788,12 +804,18 @@ compileProgram (A.ProgramT _ topdefs) = do
   let dataLabel = U.instrToCode U.Data
   -- return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
   classesDefCode <- compileClasses $ DM.mapMaybe filterClasses topdefs
+  debug $ "compiling functions..."
   funDefCodeList <- mapM compileFunctionTopDef topdefs
+  debug $ "done compiling functions..." ++ show funDefCodeList
   let funDefCode = mconcat funDefCodeList
   stringConstants <- gets $ M.toList . eStringConstants
   let constantsCode = mconcat $ map createStringConstantInCode stringConstants
+
+  debug $ "compiling classes memory..."
+
   classesMemory <- gets $ M.toList . eClassesLayout
   let vtables = mconcat $ reverse $ map (uncurry getVTable) classesMemory
+  debug $ "done compiling classes memory..."
   return $ funDefCode <> classesDefCode <> text <> constantsCode <> vtables <> dataLabel
   where
     compileFunctionTopDef :: A.TopDef -> StmtTEval U.X86Code
