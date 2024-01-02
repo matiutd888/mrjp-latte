@@ -34,7 +34,7 @@ test_binary_on_files() {
     local folder="$1"
     local exit_code="$2"
     
-    fails_that_failed_to_compile=()
+    files_that_failed_to_compile=()
     
     echo "Testing files in $folder..."
     
@@ -45,7 +45,7 @@ test_binary_on_files() {
                 echo "PASS: $file"
             else
                 echo "FAIL: $file"
-                fails_that_failed_to_compile+=("$file")
+                files_that_failed_to_compile+=("$file")
             fi
         fi
     done
@@ -53,7 +53,7 @@ test_binary_on_files() {
     # Print the selected files
     echo "##########################################"
     echo "Files that failed to compile:"
-    for selected_file in "${fails_that_failed_to_compile[@]}"; do
+    for selected_file in "${files_that_failed_to_compile[@]}"; do
         echo "$selected_file"
     done
     
@@ -62,7 +62,7 @@ test_binary_on_files() {
     echo "EXECUTING FILES"
     files_that_failed=()
     for file in "$folder"/*.lat; do
-        if [ -f "$file" ] && ! element_in_array "$file" "${fails_that_failed_to_compile[@]}"; then
+        if [ -f "$file" ] && ! element_in_array "$file" "${files_that_failed_to_compile[@]}"; then
             echo "testing ${file}"
             # Extract the base name without extension
             executable_name="${file%.lat}"
@@ -95,6 +95,14 @@ test_binary_on_files() {
         echo "$selected_file"
     done
     
+    if [[ ${#files_that_failed[@]} -gt 0 || ${#files_that_failed_to_compile[@]} -gt 0 ]]; then
+        echo "THERE WERE FAILURES"
+        exit 1
+    else
+        echo "ALL OK!"
+        exit 0
+    fi
+
     
     
     echo ""
