@@ -36,6 +36,7 @@ labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
 labelVTable :: String -> String
 labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
+-- TODO dont let user overshadow my helper function, think about how to do it!
 labelFunction :: Maybe String -> String -> String
 labelFunction Nothing "main" = "main"
 labelFunction Nothing x = if x `elem` U.helpers then x else _labelFunctionHelper Nothing x
