@@ -72,7 +72,7 @@ getNewLabel hint = do
 
 data ClassInMemory = CMem
   { cAttrOffsets :: M.Map A.UIdent Loc,
-    cfunIndexInVTable :: M.Map A.UIdent Int,
+    cfunIndexInVTable :: M.Map A.UIdent (Int, String),
     cVTableLocationOffset :: Loc,
     cVTableLabel :: String,
     cNumberOfVTableEntries :: Int,
@@ -385,7 +385,7 @@ evalExpr (A.EMemberCall _ e f exprs) = do
   (tmp1, tmp2) <- getTwoTmpRegisters
   let movAddressOfClassToRegister = U.instrToCode $ U.Mov (U.Reg tmp2) (U.SimpleMem U.stackRegister 0)
   let movAddressOfVTableToRegister = U.instrToCode $ U.Mov (U.Reg tmp1) (U.SimpleMem tmp2 $ cVTableLocationOffset cLayout)
-  let indexOfFunction = cfunIndexInVTable cLayout M.! f
+  let (indexOfFunction, _) = cfunIndexInVTable cLayout M.! f
   debug $ "Function " ++ printTree f ++ " index in vtable of class " ++ show className ++ ": " ++ show indexOfFunction
   let callIndirect = U.instrsToCode $ [U.CallIndirect (U.SimpleMem tmp1 (indexOfFunction * sizeOfVTablePointer))]
   let popArgumentsFromStack = mconcat $ replicate (length exprs + 1) U.popToNothing
@@ -702,7 +702,9 @@ sizeOfVTablePointer = 4
 
 createAndPutInEnvClassMemoryLayout :: A.UIdent -> StmtTEval ()
 createAndPutInEnvClassMemoryLayout c = do
-  parentLayout <- gets (M.lookup c . eClassesLayout)
+  cType <- gets (\e -> eClasses e M.! c)
+  classesLayout <- gets eClassesLayout
+  let parentLayout = (classesLayout M.!) <$> baseClass cType
   cMem <- createAndPutInEnvClassMemoryLayoutHelper parentLayout c
   debug $ "class " ++ printTree c ++ " layout in memory: " ++ show cMem
   env <- get
@@ -718,7 +720,7 @@ createAndPutInEnvClassMemoryLayout c = do
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
       let (attrOffsets, offsetSize) = fillLocalVarsOffsets sizeOfVTablePointer (cAttrs cType)
-      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods 0 M.empty (cFuncs cType)
+      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (printTree x) 0 M.empty (cFuncs cType)
       let ret =
             CMem
               { cAttrOffsets = attrOffsets,
@@ -734,7 +736,7 @@ createAndPutInEnvClassMemoryLayout c = do
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
       let (attrOffsets, offsetSize) = fillLocalVarsOffsets (cOffsetSize parentLayout) (cAttrs cType)
-      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (cNumberOfVTableEntries parentLayout) (cfunIndexInVTable parentLayout) (cFuncs cType)
+      let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (printTree x) (cNumberOfVTableEntries parentLayout) (cfunIndexInVTable parentLayout) (cFuncs cType)
       let ret =
             CMem
               { cAttrOffsets = attrOffsets,
@@ -753,11 +755,11 @@ createAndPutInEnvClassMemoryLayout c = do
         addVariable ident t (m, l) =
           let sizeOfVar = U.sizeOfTypeBytes t
            in (M.insert ident l m, l + sizeOfVar)
-    assignIndexesToClassMethods :: Int -> M.Map A.UIdent Int -> M.Map A.UIdent A.Type -> (Int, M.Map A.UIdent Int)
-    assignIndexesToClassMethods initialIndex initialFunctionsIndexes functionsToAdd = foldl addFunction (initialIndex, initialFunctionsIndexes) (M.keys functionsToAdd)
+    assignIndexesToClassMethods :: String -> Int -> M.Map A.UIdent (Int, String) -> M.Map A.UIdent A.Type -> (Int, M.Map A.UIdent (Int, String))
+    assignIndexesToClassMethods className initialIndex initialFunctionsIndexes functionsToAdd = foldl addFunction (initialIndex, initialFunctionsIndexes) (M.keys functionsToAdd)
       where
-        addFunction :: (Int, M.Map A.UIdent Int) -> A.UIdent -> (Int, M.Map A.UIdent Int)
-        addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent currIndex currMap)
+        addFunction :: (Int, M.Map A.UIdent (Int, String)) -> A.UIdent -> (Int, M.Map A.UIdent (Int, String))
+        addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent (currIndex, className) currMap)
 
 compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
 compileClass c classMembers = do
@@ -828,9 +830,9 @@ compileProgram (A.ProgramT _ topdefs) = do
     sortBySecond = sortBy (comparing snd)
 
     getVTable :: A.UIdent -> ClassInMemory -> U.X86Code
-    getVTable className c =
+    getVTable _ c =
       let x = M.toList (cfunIndexInVTable c)
-       in let sorted = map (labelFunction (Just $ printTree className) . (printTree . fst)) (sortBySecond x)
+       in let sorted = map (\(funName, (_, funClassName)) -> labelFunction (Just funClassName) (printTree funName)) (sortBySecond x)
            in U.instrToCode $ U.VTable (cVTableLabel c) sorted
 
     compileClassDef :: A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
