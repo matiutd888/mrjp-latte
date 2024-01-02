@@ -659,7 +659,7 @@ compileFunctionHelper maybeClassName fName argTypes idents body = do
   let funLabelWriter =
         LWriter
           { lFunName = printTree fName,
-            lClassName = maybe "" (printTree . fst) (eCurrClass env),
+            lClassName = DM.fromMaybe "" maybeClassName,
             lCounter = 1
           }
   let updatedIdents = maybe [] (const [self]) maybeClassName ++ idents
