@@ -382,14 +382,15 @@ evalExpr (A.EMemberCall _ e f exprs) = do
   let cLayout = eClassesLayout env M.! className
   let cType = eClasses env M.! className
   let A.TFun _ retType _ = cFuncs cType M.! f
-  tmp1 <- getTmpRegister
-  let movAddressOfVTableToRegister = U.instrToCode $ U.Mov (U.Reg tmp1) (U.SimpleMem U.stackRegister $ cVTableLocationOffset cLayout)
+  (tmp1, tmp2) <- getTwoTmpRegisters
+  let movAddressOfClassToRegister = U.instrToCode $ U.Mov (U.Reg tmp2) (U.SimpleMem U.stackRegister 0)
+  let movAddressOfVTableToRegister = U.instrToCode $ U.Mov (U.Reg tmp1) (U.SimpleMem tmp2 $ cVTableLocationOffset cLayout)
   let indexOfFunction = cfunIndexInVTable cLayout M.! f
   debug $ "Function " ++ printTree f ++ " index in vtable of class " ++ show className ++ ": " ++ show indexOfFunction
   let callIndirect = U.instrsToCode $ [U.CallIndirect (U.SimpleMem tmp1 (indexOfFunction * sizeOfVTablePointer))]
   let popArgumentsFromStack = mconcat $ replicate (length exprs + 1) U.popToNothing
   let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
-  return (pushReturnValue <> popArgumentsFromStack <> callIndirect <> movAddressOfVTableToRegister <> exprCode <> pushAllArgumentsToTheStack, retType)
+  return (pushReturnValue <> popArgumentsFromStack <> callIndirect <> movAddressOfVTableToRegister <> movAddressOfClassToRegister <> exprCode <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EMember _ e ident) = do
   (exprCode, A.TClass _ className) <- evalExpr e
   env <- get
@@ -425,7 +426,7 @@ evalExpr (A.ENewObject _ (A.TClass _ c)) = do
     fillVTablePointer :: String -> Int -> U.Register -> StmtTEval U.X86Code
     fillVTablePointer vTableLabel offset classAddress = do
       tmp1 <- getTmpRegister
-      let loadEffectiveAddressToRegister = U.instrToCode (U.Mov (U.Reg tmp1) (U.OpLabel vTableLabel))
+      let loadEffectiveAddressToRegister = U.instrToCode (U.Lea (U.Reg tmp1) (U.OpLabel vTableLabel))
       let moveAddressToMemory = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) (U.Reg tmp1)]
       return $ moveAddressToMemory <> loadEffectiveAddressToRegister
     fillValue :: Int -> A.Type -> U.Register -> U.X86Code
