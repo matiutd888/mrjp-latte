@@ -423,7 +423,7 @@ evalExpr (A.ENewObject _ (A.TClass _ c)) = do
     fillVTablePointer :: String -> Int -> U.Register -> StmtTEval U.X86Code
     fillVTablePointer vTableLabel offset classAddress = do
       tmp1 <- getTmpRegister
-      let loadEffectiveAddressToRegister = U.instrToCode (U.Lea (U.Reg tmp1) (U.OpLabel vTableLabel))
+      let loadEffectiveAddressToRegister = U.instrToCode (U.Mov (U.Reg tmp1) (U.OpLabel vTableLabel))
       let moveAddressToMemory = U.instrsToCode [U.Mov (U.SimpleMem classAddress offset) (U.Reg tmp1)]
       return $ moveAddressToMemory <> loadEffectiveAddressToRegister
     fillValue :: Int -> A.Type -> U.Register -> U.X86Code
@@ -618,8 +618,9 @@ getLValueAddressOnStack (A.EMember _ expr ident) = do
   (tmp1, tmp2) <- getTwoTmpRegisters
   let popAddressToRegister = U.instrToCode $ U.Pop (U.Reg tmp1)
   let offset = cAttrOffsets cLayout M.! ident
-  let pushMemberAddress = U.instrToCode $ U.Lea (U.Reg tmp2) (U.SimpleMem tmp1 offset)
-  return (pushMemberAddress <> popAddressToRegister <> exprCode)
+  let saveMemberAddressInRegister = U.instrToCode $ U.Lea (U.Reg tmp2) (U.SimpleMem tmp1 offset)
+  let pushLValueAddressOnStack = U.instrToCode $ U.Push $ U.Reg tmp2
+  return (pushLValueAddressOnStack <> saveMemberAddressInRegister <> popAddressToRegister <> exprCode)
 getLValueAddressOnStack _ = undefined
 
 cleanFunctionSpecificEnvVariables :: Env -> Env
