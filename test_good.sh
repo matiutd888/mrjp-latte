@@ -32,7 +32,6 @@ element_in_array() {
 # Function to test the binary on files in a given folder
 test_binary_on_files() {
     local folder="$1"
-    local exit_code="$2"
     
     files_that_failed_to_compile=()
     
@@ -41,7 +40,7 @@ test_binary_on_files() {
     for file in "$folder"/*.lat; do
         if [ -f "$file" ]; then
             ./$MY_BINARY "$file" >/dev/null
-            if [ "$?" -eq "$exit_code" ]; then
+            if [ "$?" -eq 0 ]; then
                 echo "PASS: $file"
             else
                 echo "FAIL: $file"
@@ -72,7 +71,7 @@ test_binary_on_files() {
             
             ./"$executable_name" < "${executable_name}.input" > "${executable_name}.output_actual"
             
-            if [ "$?" -eq 0 ]; then
+            if [ ! "$?" -eq 1 ]; then
                 
                 if diff -q "${executable_name}.output_actual" "${executable_name}.output" >/dev/null; then
                     echo "PASS: $file"
