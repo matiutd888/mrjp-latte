@@ -1,4 +1,5 @@
 #include "runtime.h"
+#include <stdint.h>
 
 void *malloc_and_return_address(size_t size) {
     void *res = malloc(size);
@@ -22,7 +23,7 @@ char *concat_strings(const char *str1, const char *str2) {
     return result;
 }
 
-void printInt(int i) {
+void printInt(int32_t i) {
     printf("%d\n", i);
 }
 
@@ -49,13 +50,13 @@ char *readString() {
     return inputString;
 }
 
-int readInt() {
+int32_t readInt() {
     int n;
     scanf("%d\n", &n);
     return n;
 }
 
-int compare_strings(const char *str1, const char *str2) {
-    int res = strcmp(str1, str2);
+int32_t compare_strings(const char *str1, const char *str2) {
+    int32_t res = (int32_t)strcmp(str1, str2);
     return (int)(res == 0);
 }
