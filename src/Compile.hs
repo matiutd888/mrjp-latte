@@ -795,8 +795,6 @@ getClassesInTopologicalOrder classesMap = reverse $ getClassesInTopologicalOrder
         doesntExtendsOrExtendsSomethingIn ClassType {baseClass = Nothing} = True
         doesntExtendsOrExtendsSomethingIn ClassType {baseClass = Just x} = S.member x usedAlready
 
--- compileProgram x = return $ U.instrToCode $ U.Add (U.Constant 0) (U.Constant 1)
-
 compileProgram :: A.Program -> StmtTEval U.X86Code
 compileProgram (A.ProgramT _ topdefs) = do
   env <- get
