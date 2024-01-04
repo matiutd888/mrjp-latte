@@ -733,7 +733,9 @@ createAndPutInEnvClassMemoryLayout c = do
     assignIndexesToClassMethods className initialIndex initialFunctionsIndexes functionsToAdd = foldl addFunction (initialIndex, initialFunctionsIndexes) (M.keys functionsToAdd)
       where
         addFunction :: (Int, M.Map A.UIdent (Int, String)) -> A.UIdent -> (Int, M.Map A.UIdent (Int, String))
-        addFunction (currIndex, currMap) newIdent = (currIndex + 1, M.insert newIdent (currIndex, className) currMap)
+        addFunction (currIndex, currMap) newIdent = case M.lookup newIdent currMap of
+          Just (index, _) -> (currIndex, M.insert newIdent (index, className) currMap)
+          Nothing -> (currIndex + 1, M.insert newIdent (currIndex, className) currMap)
 
 compileClass :: A.UIdent -> [A.ClassMember] -> StmtTEval U.X86Code
 compileClass c classMembers = do
