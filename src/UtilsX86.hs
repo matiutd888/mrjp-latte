@@ -23,7 +23,7 @@ instance Monoid X86Code where
 
 type Register = String
 
-data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String | OpLabel String deriving (Show)
+data Operand = Reg Register | SimpleMem Register Int | Constant Int | StringConstant String | OpLabel String deriving (Show, Eq)
 
 -- _registersOriginal :: [[Char]]
 -- _registersOriginal = ["rax", "rbx", "rcx", "rdx", "rbp", "rsp", "rsi", "rdi"]
@@ -54,7 +54,6 @@ operandToString (SimpleMem reg int) = showIntIfNeq0 int ++ " (%" ++ reg ++ ")"
     showIntIfNeq0 x = show x
 operandToString (Constant int) = "$" ++ show int
 operandToString (StringConstant s) = "$" ++ s
--- TODO think about this
 operandToString (OpLabel s) = s
 
 helperI2Str2Operands :: String -> Operand -> Operand -> String
@@ -144,7 +143,7 @@ data Asm
   | Text
   | Data
   | GlobalHeader
-  deriving (Show)
+  deriving (Show, Eq)
 
 popToNothing :: X86Code
 popToNothing = instrsToCode [Add (Reg stackRegister) (Constant 4)]
@@ -161,7 +160,6 @@ instrsToCode x =
 returnAddressOffset :: Int
 returnAddressOffset = 4
 
--- TODO change size of bools to 1
 sizeOfTypeBytes :: A.Type -> Int
 sizeOfTypeBytes (A.TBool _) = 4
 sizeOfTypeBytes _ = 4

@@ -339,7 +339,6 @@ evalExpr (A.EApp _ fName expressions) = do
       return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
 evalExpr (A.EString _ s) = do
   label <- addLabelIfNotExist s
-  -- TODO maybe put the constant on heap?
   return (U.instrsToCode [U.Push $ U.StringConstant label], A.TStr noPos)
   where
     addLabelIfNotExist :: String -> StmtTEval String
@@ -774,14 +773,38 @@ compileClass c classMembers = do
     compileClassMethod (A.ClassMethodT _ (A.FunDefT _ _ fname args block)) = let argNames = map (\(A.ArgT _ _ x) -> x) args in compileClassFunction c fname argNames block
     compileClassMethod _ = return mempty
 
--- TODO run postprocessing
--- 1. remove add / sub  by $0
--- 2. remove div / imul by $1
--- 3. push x; pop register -> mov x, register
 codeToStr :: U.X86Code -> String
 codeToStr code =
-  let cLines = map U.instrToString $ reverse $ DList.toList (codeLines code)
-   in intercalate "\n" cLines
+  let cLines = reverse $ DList.toList (codeLines code)
+   in let postprocessed = postProcess cLines
+       in let cLinesStr = map U.instrToString postprocessed
+           in intercalate "\n" cLinesStr
+
+postProcess :: [U.Asm] -> [U.Asm]
+postProcess x =
+  let postprocessed = postprecessingHelper x
+   in if x == postprocessed then postprocessed else postProcess postprocessed
+
+postprecessingHelper :: [U.Asm] -> [U.Asm]
+postprecessingHelper = changePushPopToMov . filterOutRedundantInstructions
+
+isRedundant :: U.Asm -> Bool
+isRedundant (U.Add _ (U.Constant 0)) = True
+isRedundant (U.Sub _ (U.Constant 0)) = True
+isRedundant (U.Imul _ (U.Constant 1)) = True
+isRedundant (U.Mov (U.Reg x) (U.Reg y)) = x == y
+isRedundant _ = False
+
+filterOutRedundantInstructions :: [U.Asm] -> [U.Asm]
+filterOutRedundantInstructions = filter (not . isRedundant)
+
+changePushPopToMov :: [U.Asm] -> [U.Asm]
+changePushPopToMov = changePushPopToMovHelper []
+  where
+    changePushPopToMovHelper :: [U.Asm] -> [U.Asm] -> [U.Asm]
+    changePushPopToMovHelper res [] = reverse res
+    changePushPopToMovHelper res ((U.Push x) : (U.Pop (U.Reg y)) : t) = changePushPopToMovHelper (U.Mov (U.Reg y) x : res) t
+    changePushPopToMovHelper res (h : t) = changePushPopToMovHelper (h : res) t
 
 getClassesInTopologicalOrder :: M.Map A.UIdent ClassType -> [A.UIdent]
 getClassesInTopologicalOrder classesMap = reverse $ getClassesInTopologicalOrderHelper S.empty [] classesMap
