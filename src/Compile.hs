@@ -354,8 +354,7 @@ evalExpr (A.EMemberCall _ e f exprs) = do
 
   env <- get
   let cLayout = eClassesLayout env M.! className
-  let cType = eClasses env M.! className
-  let A.TFun _ retType _ = cFuncs cType M.! f
+  let A.TFun _ retType _ = DM.fromJust $ getSomethingFromClassOrSuperClasses (M.lookup f . cFuncs) className env
   (tmp1, tmp2) <- getTwoTmpRegisters
   let movAddressOfClassToRegister = U.instrToCode $ U.Mov (U.Reg tmp2) (U.SimpleMem U.stackRegister 0)
   let movAddressOfVTableToRegister = U.instrToCode $ U.Mov (U.Reg tmp1) (U.SimpleMem tmp2 $ cVTableLocationOffset cLayout)
