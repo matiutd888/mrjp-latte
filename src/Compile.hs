@@ -36,14 +36,13 @@ labelReturn (LWriter f c _) = "label" ++ c ++ "$" ++ f ++ "return"
 labelVTable :: String -> String
 labelVTable className = "label" ++ className ++ "$" ++ "vTable"
 
--- TODO dont let user overshadow my helper function, think about how to do it!
-labelFunction :: Maybe String -> String -> String
-labelFunction Nothing "main" = "main"
-labelFunction Nothing x = if x `elem` U.helpers then x else _labelFunctionHelper Nothing x
-labelFunction c x = _labelFunctionHelper c x
+labelCallFunction :: Maybe String -> String -> String
+labelCallFunction Nothing x = if x `elem` U.helpers then x else labelUserFunction Nothing x
+labelCallFunction c x = labelUserFunction c x
 
-_labelFunctionHelper :: Maybe String -> String -> String
-_labelFunctionHelper c f = "f" ++ DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
+labelUserFunction :: Maybe String -> String -> String
+labelUserFunction Nothing "main" = "main"
+labelUserFunction c f = "f" ++ DM.fromMaybe "" c ++ "$" ++ f ++ "$" ++ "function"
 
 labelEmptyStr :: String
 labelEmptyStr = "label$$$EmptystringLit"
@@ -117,21 +116,6 @@ getTwoTmpRegisters = return ("ecx", "edi")
 moveLocalVariableAddressToRegister :: Int -> U.Register -> StmtTEval U.X86Code
 moveLocalVariableAddressToRegister offsetRelativeToFR reg =
   return $ U.instrsToCode [U.Lea (U.Reg reg) (U.SimpleMem U.frameRegister offsetRelativeToFR)]
-
--- moveStackToRegister :: U.Register -> U.X86Code
--- moveStackToRegister reg =
---   U.instrsToCode
---     [ U.Mov (U.Reg reg) (U.SimpleMem U.stackRegister 0)
---     ]
-
--- moveStackToLocationRelativeToFR :: Int -> StmtTEval U.X86Code
--- moveStackToLocationRelativeToFR offsetRelativeToFR = do
---   tmpReg <- getTmpRegister
---   return $
---     U.instrsToCode $
---       [ U.Mov (U.Reg tmpReg) (U.SimpleMem U.stackRegister 0),
---         U.Mov (U.SimpleMem U.frameRegister offsetRelativeToFR) (U.Reg tmpReg)
---       ]
 
 prologue :: Int -> U.X86Code
 prologue bytesForLocals =
@@ -333,7 +317,7 @@ evalExpr (A.EApp _ fName expressions) = do
       let reverseExprs = reverse exprs
       result <- mapM evalExpr reverseExprs
       let pushAllArgumentsToTheStack = mconcat . reverse $ map fst result
-      let callF = U.instrToCode $ U.Call $ labelFunction Nothing $ printTree f
+      let callF = U.instrToCode $ U.Call $ labelCallFunction Nothing $ printTree f
       let popArgumentsFromStack = mconcat $ replicate (length exprs) U.popToNothing
       let pushReturnValue = U.instrsToCode [U.Push $ U.Reg U.resultRegister]
       return (pushReturnValue <> popArgumentsFromStack <> callF <> pushAllArgumentsToTheStack, retType)
@@ -360,16 +344,6 @@ evalExpr (A.EString _ s) = do
 evalExpr (A.ELitInt _ i) = return (U.instrsToCode [U.Push $ U.Constant $ fromIntegral i], A.TInt noPos)
 evalExpr (A.ELitFalse _) = return (U.instrsToCode [U.Push $ U.Constant 0], A.TBool noPos)
 evalExpr (A.ELitTrue _) = return (U.instrsToCode [U.Push $ U.Constant 1], A.TBool noPos)
---   data ClassInMemory = CMem
--- { cAttrOffsets :: M.Map A.UIdent Loc,
---   cfunIndexInVTable :: M.Map A.UIdent Int,
---   cVTableLocationOffset :: Loc,
---   cVTableLabel :: String,
---   cNumberOfVTableEntries :: Int,
---   cOffsetSize :: Int
--- }
--- deriving (Show)
-
 evalExpr (A.ECastNull _ c) = return (U.instrsToCode [U.Push $ U.Constant 0], A.TClass noPos c)
 evalExpr (A.EMemberCall _ e f exprs) = do
   let reverseExprs = reverse exprs
@@ -645,13 +619,13 @@ cleanFunctionSpecificEnvVariables env =
     }
 
 main :: String
-main = labelFunction Nothing "main"
+main = labelUserFunction Nothing "main"
 
 compileFunctionHelper :: Maybe String -> A.UIdent -> [A.Type] -> [A.UIdent] -> A.Block -> StmtTEval U.X86Code
 compileFunctionHelper maybeClassName fName argTypes idents body = do
   env <- get
   debug $ "compiling function " ++ show fName
-  let codeFunName = labelFunction maybeClassName (printTree fName)
+  let codeFunName = labelUserFunction maybeClassName (printTree fName)
   let numberOfBytesForLocals = getNumberOfBytesForLocals (A.SBStmt noPos body)
   let globalHeader = if codeFunName == main then U.instrToCode U.GlobalHeader else U.instrsToCode []
   let funLabel = U.instrToCode $ U.Label codeFunName
@@ -856,7 +830,7 @@ compileProgram (A.ProgramT _ topdefs) = do
     getVTable :: A.UIdent -> ClassInMemory -> U.X86Code
     getVTable _ c =
       let x = M.toList (cfunIndexInVTable c)
-       in let sorted = map (\(funName, (_, funClassName)) -> labelFunction (Just funClassName) (printTree funName)) (sortBySecond x)
+       in let sorted = map (\(funName, (_, funClassName)) -> labelUserFunction (Just funClassName) (printTree funName)) (sortBySecond x)
            in U.instrToCode $ U.VTable (cVTableLabel c) sorted
 
     compileClassDef :: A.ClassDef -> A.UIdent -> StmtTEval U.X86Code
