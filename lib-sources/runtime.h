@@ -17,4 +17,4 @@ char *readString();
 
 int readInt();
 
-bool compare_strings(const char *str1, const char *str2);
+int compare_strings(const char *str1, const char *str2);

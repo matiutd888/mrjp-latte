@@ -56,8 +56,6 @@ int readInt() {
 }
 
 int compare_strings(const char *str1, const char *str2) {
-    printf("%s\n", str1);
-    printf("%s\n", str2);
     int res = strcmp(str1, str2);
-    return (res == 0);
+    return (int)(res == 0);
 }
