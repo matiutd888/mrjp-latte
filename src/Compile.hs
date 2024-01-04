@@ -371,23 +371,28 @@ evalExpr (A.EMember _ e ident) = do
   debug $ "EMember, succesfully compiled " ++ show exprCode
   let cLayout = eClassesLayout env M.! className
   let cType = eClasses env M.! className
+  debug $ "EMember, succesfully done " ++ show cType ++ show cLayout
   tmp1 <- getTmpRegister
+  debug $ "cattr offsets of \n" ++ show className ++ (show $ cAttrOffsets cLayout)
+
   let popAddressToRegister = U.instrToCode $ U.Pop (U.Reg tmp1)
   let offset = cAttrOffsets cLayout M.! ident
   let pushMemberValue = U.instrToCode $ U.Push (U.SimpleMem tmp1 offset)
-  return (pushMemberValue <> popAddressToRegister <> exprCode, (cAttrs cType) M.! ident)
+  debug $ "EMember, succesfully done " ++ show pushMemberValue
+
+  return (pushMemberValue <> popAddressToRegister <> exprCode, DM.fromJust $ getSomethingFromClassOrSuperClasses (M.lookup ident . cAttrs) className env)
 evalExpr (A.ESelf _) = do
   debug "comiling ESelf"
   (currClassName, currClassLocation) <- gets (fromJust . eCurrClass)
   let pushValue = U.instrsToCode [U.Push $ U.SimpleMem U.frameRegister currClassLocation]
+  debug $ "successfully compiled ESELF" ++ show pushValue
   return (pushValue, A.TClass noPos currClassName)
 evalExpr (A.ENewObject _ (A.TClass _ c)) = do
   env <- get
   let cMemoryLayout = eClassesLayout env M.! c
-  let cData = eClasses env M.! c
   (codeThatCallsMalloc, registerWithClassAddress) <- allocMemoryForClass (cOffsetSize cMemoryLayout)
   codeThatFillsVTablePointer <- fillVTablePointer (cVTableLabel cMemoryLayout) (cVTableLocationOffset cMemoryLayout) registerWithClassAddress
-  let fillAttributesCode = mconcat $ map (handleOffset registerWithClassAddress cData) (M.toList (cAttrOffsets cMemoryLayout))
+  let fillAttributesCode = mconcat $ map (handleOffset registerWithClassAddress (c, env)) (M.toList (cAttrOffsets cMemoryLayout))
   let pushAddress = U.instrToCode $ U.Push (U.Reg registerWithClassAddress)
   return (pushAddress <> fillAttributesCode <> codeThatFillsVTablePointer <> codeThatCallsMalloc, A.TClass noPos c)
   where
@@ -412,8 +417,8 @@ evalExpr (A.ENewObject _ (A.TClass _ c)) = do
         getDefaultValueByType (A.TClass _ _) = U.Constant 0
         getDefaultValueByType _ = undefined
 
-    handleOffset :: U.Register -> ClassType -> (A.UIdent, Int) -> U.X86Code
-    handleOffset classAddress cData (ident, offset) = let varType = cAttrs cData M.! ident in fillValue offset varType classAddress
+    handleOffset :: U.Register -> (A.UIdent, Env) -> (A.UIdent, Int) -> U.X86Code
+    handleOffset classAddress (className, env) (ident, offset) = let varType = DM.fromJust $ getSomethingFromClassOrSuperClasses (M.lookup ident . cAttrs) className env in fillValue offset varType classAddress
 evalExpr (A.ENewObject _ _) = undefined
 
 evalBooleanExprHelp :: String -> Int -> A.Expr -> StmtTEval U.X86Code
@@ -455,6 +460,15 @@ writeArgumentsToLocationsMap types idents currMap = fst $ foldl f (currMap, U.re
 
 writeArgumentsToTypesMap :: [A.Type] -> [A.UIdent] -> M.Map A.UIdent A.Type -> M.Map A.UIdent A.Type
 writeArgumentsToTypesMap types idents currMap = foldl (\m (ident, t) -> M.insert ident t m) currMap $ zip idents types
+
+getSomethingFromClassOrSuperClasses :: (ClassType -> Maybe a) -> A.UIdent -> Env -> Maybe a
+getSomethingFromClassOrSuperClasses method className env =
+  let cType = DM.fromJust $ M.lookup className (eClasses env)
+   in case method cType of
+        Just x -> return x
+        Nothing -> do
+          superClass <- baseClass cType
+          getSomethingFromClassOrSuperClasses method superClass env
 
 generateCode :: A.Stmt -> StmtTEval U.X86Code
 generateCode (A.SEmpty _) = return mempty
@@ -694,6 +708,7 @@ createAndPutInEnvClassMemoryLayout c = do
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
       let (attrOffsets, offsetSize) = fillLocalVarsOffsets sizeOfVTablePointer (cAttrs cType)
+
       let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (printTree x) 0 M.empty (cFuncs cType)
       let ret =
             CMem
@@ -709,7 +724,8 @@ createAndPutInEnvClassMemoryLayout c = do
       let vTableLabel = labelVTable (printTree x)
       let vTableLocationOffset = 0
       cType <- gets ((fromJust . M.lookup x) . eClasses)
-      let (attrOffsets, offsetSize) = fillLocalVarsOffsets (cOffsetSize parentLayout) (cAttrs cType)
+      let (newClassAttrOffsets, offsetSize) = fillLocalVarsOffsets (cOffsetSize parentLayout) (cAttrs cType)
+      let attrOffsets = M.union newClassAttrOffsets (cAttrOffsets parentLayout)
       let (numberOfEntriesInVTable, vTableIndexes) = assignIndexesToClassMethods (printTree x) (cNumberOfVTableEntries parentLayout) (cfunIndexInVTable parentLayout) (cFuncs cType)
       let ret =
             CMem
