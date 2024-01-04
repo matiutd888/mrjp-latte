@@ -66,7 +66,7 @@ typeOfExpr (A.EAdd pos e1 (A.Plus _) e2) = do
   case t of
     A.TStr _ -> typeOfBinOp A.TStr A.TStr pos e1 e2
     A.TInt _ -> typeOfBinOp A.TInt A.TInt pos e1 e2
-    _ -> throwError $ showPosition (A.hasPosition e1) ++ unexpectedTypeMessage t ++ expectedTypeMessage (A.TStr pos) ++ " or " ++ printTree (A.TInt pos)
+    _ -> throwError $ showPosition (A.hasPosition e1) ++ unexpectedTypeMessage t ++ " " ++ expectedTypeMessage (A.TStr pos) ++ " or " ++ printTree (A.TInt pos)
 typeOfExpr (A.EAdd pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
 typeOfExpr (A.EMul pos e1 _ e2) = typeOfBinOp A.TInt A.TInt pos e1 e2
 typeOfExpr (A.ECastNull pos ident) = do
