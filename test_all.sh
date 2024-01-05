@@ -8,4 +8,5 @@ make
 ./test_good.sh lattests/extensions/objects2 >/dev/null 2>/dev/null
 ./test_good.sh ../mrjp-tests/good/ >/dev/null 2>/dev/null
 ./test_good.sh ../gbz-test/ >/dev/null 2>/dev/null
+./test_single_file.sh custom/cases_in_one_file.lat  >/dev/null 2>/dev/null
 echo "ALL TESTS OK"

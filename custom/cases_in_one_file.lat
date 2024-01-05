@@ -19,7 +19,9 @@ int main () {
   string a = "alamakota";
   assertString("ala" + "ma" + "kota", a);
   
-  
+  assertBool("a" + "b" + "c" == "a" + "b" + "c");
+  assertBool(("ala" + "ma") + ("kota" + "orazpsa") == "alamakotaorazpsa");
+  assertBool(("ala" + "ma") + ("kota" + "orazpsa") != "alamakotaorazpsa\n");
   int c = 3;
   c+1;
   c;
@@ -51,6 +53,12 @@ void assertString(string actual, string expected) {
   if (actual != expected) {
     error();
   }
+}
+
+void assertBool(boolean x) {
+    if (!x) {
+        error();
+    }
 }
 
 void assert(int actual, int expected) {
