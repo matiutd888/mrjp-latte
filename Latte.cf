@@ -79,7 +79,7 @@ EString. 	Expr6   ::= String ;
 
 EApp. 		Expr6   ::= UIdent "(" [Expr] ")" ;
 
-ECastNull. 		Expr5   ::= "(" UIdent ")" "null";
+ECastNull. 		Expr5   ::= "(" UIdent ")null";
 
 Neg. 		Expr5   ::= "-" Expr6 ;
 Not. 		Expr5   ::= "!" Expr6 ;
